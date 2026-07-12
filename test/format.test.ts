@@ -17,6 +17,11 @@ describe('formatShort (Cookie-Clicker abbreviation)', () => {
     expect(formatShort(1_500_000_000)).toBe('1.5B')
   })
 
+  it('rolls a value that rounds up to 1000 into the next suffix', () => {
+    expect(formatShort(999_999)).toBe('1M')
+    expect(formatShort(999_499)).toBe('999K') // stays below the roll-over
+  })
+
   it('keeps the sign for negative values', () => {
     expect(formatShort(-2500)).toBe('-2.5K')
   })

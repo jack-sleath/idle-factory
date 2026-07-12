@@ -395,3 +395,29 @@
 .away__collect {
   width: 100%;
 }
+
+.onboard__list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* Roomier tap targets on touch devices for comfortable one-handed play. */
+@media (pointer: coarse) {
+  .palette__btn {
+    min-width: 66px;
+    min-height: 66px;
+  }
+  .hud__btn {
+    padding: 10px 12px;
+  }
+  .save__btn,
+  .panel__sell,
+  .panel__close {
+    padding: 12px;
+  }
+}

@@ -6,6 +6,7 @@ import { StoragePanel } from './components/StoragePanel'
 import { MarketPanel } from './components/MarketPanel'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
+import { Onboarding } from './components/Onboarding'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useMarketLoop } from './hooks/useMarketLoop'
 import { useOfflineProgress } from './hooks/useOfflineProgress'
@@ -73,6 +74,7 @@ export default function App() {
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
         <AwaySummary />
+        <Onboarding />
       </main>
       <Palette />
     </div>
