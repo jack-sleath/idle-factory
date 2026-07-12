@@ -45,6 +45,12 @@ export interface SimState {
   buffers: Map<string, MachineBuffer>
   /** cell key → contents, for storage cells only (M5). */
   stores: Map<string, StorageState>
+  /**
+   * cell key → { itemId: count } consumed by an offline seller (M9). Only
+   * written while `online` is false; used by offline catch-up to measure seller
+   * throughput. Empty during live play.
+   */
+  sellerBuffers: Map<string, Record<string, number>>
   /** Bank balance; auto-sellers credit it while online (M5). */
   money: number
   /** Live sale price per item id (from the market, M7); base price if absent. */
@@ -92,7 +98,7 @@ function combine(a: string, b: string): string {
  */
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
-  const { machines, items, buffers, stores, prices, online } = state
+  const { machines, items, buffers, stores, sellerBuffers, prices, online } = state
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
 
@@ -219,9 +225,9 @@ export function step(state: SimState): SimState {
         return count < storageCapacity(tm.catalogId)
       }
       case 'seller':
-        // Online, a seller consumes its winning feeder's item (banked on build).
-        // Offline it is inert and back-pressures; offline buffering arrives in M9.
-        return online && winningFeeder(tm.x, tm.y) === fromKey
+        // A seller always consumes its winning feeder's item: online it is banked
+        // on build, offline it is buffered (M9) so nothing is lost while away.
+        return winningFeeder(tm.x, tm.y) === fromKey
       default:
         return false
     }
@@ -246,6 +252,7 @@ export function step(state: SimState): SimState {
   const nextItems = new Map<string, string>()
   const nextBuffers = new Map<string, MachineBuffer>()
   const nextStores = new Map<string, StorageState>()
+  const nextSellerBuffers = new Map<string, Record<string, number>>(sellerBuffers)
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink `key`.
@@ -309,14 +316,31 @@ export function step(state: SimState): SimState {
       }
       case 'seller': {
         const incoming = arrivingItem(m.x, m.y)
-        // Online: liquidate immediately at the live market price (base price if
-        // the market has no entry). Offline buffering (M9) keeps items instead.
-        if (incoming !== undefined && online) money += prices[incoming] ?? basePrice(incoming)
+        if (incoming !== undefined) {
+          if (online) {
+            // Liquidate at the live market price (base price if the market has none).
+            money += prices[incoming] ?? basePrice(incoming)
+          } else {
+            // Offline: buffer intake per item so catch-up can measure throughput.
+            const prev = nextSellerBuffers.get(key) ?? {}
+            nextSellerBuffers.set(key, { ...prev, [incoming]: (prev[incoming] ?? 0) + 1 })
+          }
+        }
         break
       }
       // spawner: emits into neighbours but stores nothing itself.
     }
   }
 
-  return { machines, items: nextItems, buffers: nextBuffers, stores: nextStores, money, prices, online, tick }
+  return {
+    machines,
+    items: nextItems,
+    buffers: nextBuffers,
+    stores: nextStores,
+    sellerBuffers: nextSellerBuffers,
+    money,
+    prices,
+    online,
+    tick,
+  }
 }

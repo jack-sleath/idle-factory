@@ -159,10 +159,10 @@
 - Show an away summary: elapsed time, items stockpiled in storage, money auto-earned from seller buffers.
 
 **Done when:**
-- [ ] Returning advances market + stockpiles with a single 24h cap on both; storage never exceeds capacity.
-- [ ] Auto-sellers sell their buffer once at the caught-up price; no money is credited at fluctuating offline prices.
-- [ ] In-flight belt items are cleared after the skip; the away summary shows stockpiles + earnings.
-- [ ] Catch-up is near-instant even after a full-day absence (samples a short window, does not replay a day of ticks).
+- [x] Returning advances market + stockpiles with a single 24h cap on both; storage never exceeds capacity.
+- [x] Auto-sellers sell their buffer once at the caught-up price; no money is credited at fluctuating offline prices.
+- [x] In-flight belt items are cleared after the skip; the away summary shows stockpiles + earnings.
+- [x] Catch-up is near-instant even after a full-day absence (samples a short window, does not replay a day of ticks).
 
 ---
 

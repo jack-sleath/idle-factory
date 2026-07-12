@@ -28,6 +28,17 @@ export function formatMoney(n: number): string {
   return config.numberFormat === 'short' ? formatShort(n) : trimNumber(n)
 }
 
+/** A short human duration, e.g. "2h 15m", "5m 3s", "42s". */
+export function formatDuration(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
+}
+
 /** Sub-1000 values: whole numbers as-is, fractions to at most two decimals. */
 function trimNumber(n: number): string {
   if (Number.isInteger(n)) return String(n)

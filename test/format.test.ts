@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatShort } from '../src/lib/format'
+import { formatDuration, formatShort } from '../src/lib/format'
 
 describe('formatShort (Cookie-Clicker abbreviation)', () => {
   it('leaves sub-thousand values readable', () => {
@@ -19,5 +19,14 @@ describe('formatShort (Cookie-Clicker abbreviation)', () => {
 
   it('keeps the sign for negative values', () => {
     expect(formatShort(-2500)).toBe('-2.5K')
+  })
+})
+
+describe('formatDuration', () => {
+  it('formats hours/minutes/seconds compactly', () => {
+    expect(formatDuration(42_000)).toBe('42s')
+    expect(formatDuration(5 * 60_000 + 3_000)).toBe('5m 3s')
+    expect(formatDuration(2 * 3_600_000 + 15 * 60_000)).toBe('2h 15m')
+    expect(formatDuration(0)).toBe('0s')
   })
 })

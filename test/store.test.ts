@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useGameStore, seedStarterKit } from '../src/store/gameStore'
 import { loadSave } from '../src/game/save'
+import { seedMarket } from '../src/game/market'
 import { cellKey } from '../src/game/world'
 import { config } from '../src/data/config'
 
@@ -13,7 +14,10 @@ function resetToEmptyWorld() {
     buffers: new Map(),
     stores: new Map(),
     money: 0,
+    market: seedMarket(0),
     online: true,
+    lastAway: null,
+    savedAt: 0,
     selected: null,
     worldRev: 0,
     camera: { ...config.camera },
@@ -230,6 +234,38 @@ describe('save management: export / import (M8)', () => {
     expect(useGameStore.getState().importSave('not json')).toBe(false)
     expect(useGameStore.getState().money).toBe(50) // unchanged
     expect(useGameStore.getState().world.has(cellKey(1, 1))).toBe(true)
+  })
+})
+
+describe('offline progression on return (M9)', () => {
+  beforeEach(resetToEmptyWorld)
+
+  it('clears in-flight belt items, accrues storage, and sets an away summary', () => {
+    const store = useGameStore.getState()
+    store.place(0, 0, 'ore-gatherer-basic')
+    store.place(1, 0, 'belt-basic')
+    store.place(2, 0, 'storage-basic')
+    // Pretend we left 2 hours ago, with an item mid-belt.
+    useGameStore.setState({
+      items: new Map([[cellKey(1, 0), 'ore']]),
+      savedAt: Date.now() - 2 * 3_600_000,
+    })
+
+    useGameStore.getState().applyOfflineProgress()
+    const s = useGameStore.getState()
+
+    expect(s.items.size).toBe(0) // in-flight items cleared across the skip
+    expect(s.stores.get(cellKey(2, 0))!.count).toBeGreaterThan(0) // stockpiled while away
+    expect(s.lastAway).not.toBeNull()
+    expect(s.lastAway!.stockpiled.some((e) => e.item === 'ore')).toBe(true)
+    expect(s.savedAt).toBeGreaterThan(Date.now() - 5_000) // stamped to ~now
+  })
+
+  it('is a no-op for a brand-new game (savedAt 0)', () => {
+    useGameStore.setState({ savedAt: 0, money: 0 })
+    useGameStore.getState().applyOfflineProgress()
+    expect(useGameStore.getState().money).toBe(0)
+    expect(useGameStore.getState().lastAway).toBeNull()
   })
 })
 
