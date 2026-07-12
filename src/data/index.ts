@@ -13,6 +13,21 @@ export const ITEMS_BY_ID: Record<string, ItemDef> = Object.fromEntries(
   ITEMS.map((item) => [item.id, item]),
 )
 
+/**
+ * Current sale price of an item. In M5 this is the static base table from
+ * items.json (`startingValue`); M7 replaces it with the live market price. All
+ * selling (auto-sellers, storage Sell-All) reads through here so that swap is
+ * localized.
+ */
+export function basePrice(itemId: string): number {
+  return ITEMS_BY_ID[itemId]?.startingValue ?? 0
+}
+
+/** Storage capacity for a catalog entry (falls back to 0 for non-storage). */
+export function storageCapacity(catalogId: string): number {
+  return CATALOG_BY_ID[catalogId]?.capacity ?? 0
+}
+
 export const CATALOG_BY_ID: Record<string, CatalogEntry> = Object.fromEntries(
   CATALOG.map((entry) => [entry.id, entry]),
 )

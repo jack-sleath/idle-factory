@@ -1,6 +1,6 @@
 import type { Dir, Machine } from './types'
 import { cellKey, dirDelta } from './world'
-import { CATALOG_BY_ID, combinerOutput, processorOutput } from '../data'
+import { basePrice, CATALOG_BY_ID, combinerOutput, processorOutput, storageCapacity } from '../data'
 import { config } from '../data/config'
 
 // The simulation is a pure `step(state) -> state` function over next-state
@@ -29,13 +29,26 @@ export interface MachineBuffer {
   out: string | null
 }
 
-/** The simulation state. `machines` is read-only; items/buffers are rebuilt. */
+/** A storage machine's contents: it locks onto the first item type it receives. */
+export interface StorageState {
+  /** The locked item type, or null while the storage is still empty. */
+  item: string | null
+  count: number
+}
+
+/** The simulation state. `machines` is read-only; the rest is rebuilt per tick. */
 export interface SimState {
   machines: Map<string, Machine>
   /** cell key → item type id (a belt cell holds at most one item). */
   items: Map<string, string>
   /** cell key → internal buffer, for processor/combiner cells only. */
   buffers: Map<string, MachineBuffer>
+  /** cell key → contents, for storage cells only (M5). */
+  stores: Map<string, StorageState>
+  /** Bank balance; auto-sellers credit it while online (M5). */
+  money: number
+  /** Whether live selling is active. Offline (M9) sellers buffer instead. */
+  online: boolean
   /** Monotonic tick counter. */
   tick: number
 }
@@ -77,7 +90,7 @@ function combine(a: string, b: string): string {
  */
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
-  const { machines, items, buffers } = state
+  const { machines, items, buffers, stores, online } = state
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
 
@@ -115,9 +128,10 @@ export function step(state: SimState): SimState {
     }
   }
 
-  // The single winning source that will feed target belt (tx,ty) this tick, by
-  // fixed N,E,S,W priority among neighbours that point in and are ready.
-  const winningFeederBelt = (tx: number, ty: number): string | null => {
+  // The single winning source that will feed target cell (tx,ty) this tick, by
+  // fixed N,E,S,W priority among neighbours that point in and are ready. Used for
+  // any single-input sink (belt, storage, seller).
+  const winningFeeder = (tx: number, ty: number): string | null => {
     for (const nb of INCOMING) {
       const key = cellKey(tx + nb.dx, ty + nb.dy)
       const m = machines.get(key)
@@ -183,7 +197,7 @@ export function step(state: SimState): SimState {
     if (!tm) return false
     switch (tm.kind) {
       case 'belt':
-        if (winningFeederBelt(tm.x, tm.y) !== fromKey) return false
+        if (winningFeeder(tm.x, tm.y) !== fromKey) return false
         return !items.has(targetKey) || willEmit(targetKey)
       case 'processor':
         if (backFeeder(tm) !== fromKey) return false
@@ -192,8 +206,22 @@ export function step(state: SimState): SimState {
         const slot = combinerSlotForFeeder(tm, fromKey)
         return slot >= 0 && combinerSlotFree(targetKey, slot)
       }
+      case 'storage': {
+        if (winningFeeder(tm.x, tm.y) !== fromKey) return false
+        const store = stores.get(targetKey)
+        const incoming = emittedValue(fromKey)
+        if (incoming === undefined) return false
+        const locked = store?.item ?? null
+        if (locked !== null && locked !== incoming) return false // wrong type → reject
+        const count = store?.count ?? 0
+        return count < storageCapacity(tm.catalogId)
+      }
+      case 'seller':
+        // Online, a seller consumes its winning feeder's item (banked on build).
+        // Offline it is inert and back-pressures; offline buffering arrives in M9.
+        return online && winningFeeder(tm.x, tm.y) === fromKey
       default:
-        return false // storage/seller do not accept in M4 (M5)
+        return false
     }
   }
 
@@ -215,6 +243,14 @@ export function step(state: SimState): SimState {
 
   const nextItems = new Map<string, string>()
   const nextBuffers = new Map<string, MachineBuffer>()
+  const nextStores = new Map<string, StorageState>()
+  let money = state.money
+
+  // The item (if any) that will actually arrive into single-input sink `key`.
+  const arrivingItem = (tx: number, ty: number): string | undefined => {
+    const winner = winningFeeder(tx, ty)
+    return winner && willEmit(winner) ? emittedValue(winner) : undefined
+  }
 
   for (const m of machines.values()) {
     const key = cellKey(m.x, m.y)
@@ -222,8 +258,8 @@ export function step(state: SimState): SimState {
       case 'belt': {
         // Keep a held item; a belt that clears may receive a fresh one.
         let value = items.has(key) && !willEmit(key) ? items.get(key) : undefined
-        const winner = winningFeederBelt(m.x, m.y)
-        if (winner && willEmit(winner)) value = emittedValue(winner)
+        const incoming = arrivingItem(m.x, m.y)
+        if (incoming !== undefined) value = incoming
         if (value !== undefined) nextItems.set(key, value)
         break
       }
@@ -257,10 +293,28 @@ export function step(state: SimState): SimState {
         }
         break
       }
+      case 'storage': {
+        const store = stores.get(key)
+        let item = store?.item ?? null
+        let count = store?.count ?? 0
+        const incoming = arrivingItem(m.x, m.y)
+        if (incoming !== undefined) {
+          item = item ?? incoming // lock onto the first type received
+          count += 1
+        }
+        if (item !== null && count > 0) nextStores.set(key, { item, count })
+        break
+      }
+      case 'seller': {
+        const incoming = arrivingItem(m.x, m.y)
+        // Online: liquidate immediately at the current price. Offline buffering
+        // (so nothing is lost while away) arrives in M9.
+        if (incoming !== undefined && online) money += basePrice(incoming)
+        break
+      }
       // spawner: emits into neighbours but stores nothing itself.
-      // storage/seller: no simulation behaviour until M5.
     }
   }
 
-  return { machines, items: nextItems, buffers: nextBuffers, tick }
+  return { machines, items: nextItems, buffers: nextBuffers, stores: nextStores, money, online, tick }
 }

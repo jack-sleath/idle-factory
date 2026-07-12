@@ -88,9 +88,9 @@
 - Money shown in the HUD, formatted Cookie-Clicker-style via `lib/format.ts`.
 
 **Done when:**
-- [ ] Storage accumulates only its locked type (up to capacity) and rejects non-matching items.
-- [ ] Selecting a storage shows its current value and **Sell All** banks the full stockpile.
-- [ ] Items entering a seller (online) increase the money counter, shown with abbreviated large-number formatting.
+- [x] Storage accumulates only its locked type (up to capacity) and rejects non-matching items.
+- [x] Selecting a storage shows its current value and **Sell All** banks the full stockpile.
+- [x] Items entering a seller (online) increase the money counter, shown with abbreviated large-number formatting.
 
 ---
 

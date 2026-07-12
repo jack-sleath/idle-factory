@@ -26,7 +26,8 @@
     "emoji": "📦",
     "cost": 30,
     "freeIfNonePlaced": true,
-    "defaultDir": "E"
+    "defaultDir": "E",
+    "capacity": 500
   },
   {
     "id": "seller-basic",

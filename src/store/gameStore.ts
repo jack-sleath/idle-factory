@@ -10,10 +10,10 @@ import {
   nextDir,
   type ChunkIndex,
 } from '../game/world'
-import { CATALOG_BY_ID } from '../data'
+import { basePrice, CATALOG_BY_ID } from '../data'
 import { config } from '../data/config'
 import { loadSave, makeSave, writeSave } from '../game/save'
-import { step, type MachineBuffer } from '../game/tick'
+import { step, type MachineBuffer, type StorageState } from '../game/tick'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -32,6 +32,12 @@ export interface GameState {
   items: Map<string, string>
   /** Internal buffers for processor/combiner cells: cell key `x,y` → buffer. */
   buffers: Map<string, MachineBuffer>
+  /** Storage contents for storage cells: cell key `x,y` → {item, count}. */
+  stores: Map<string, StorageState>
+  /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
+  money: number
+  /** Whether live selling is active (offline gating arrives in M9). */
+  online: boolean
   /** Monotonic simulation tick counter. */
   tick: number
   /** Active tool. */
@@ -51,6 +57,8 @@ export interface GameState {
   rotate: (cx: number, cy: number) => void
   remove: (cx: number, cy: number) => void
   select: (cx: number, cy: number) => void
+  /** Sell a storage's full stockpile at the current price, banking the money. */
+  sellAll: (cx: number, cy: number) => void
   /** Advance the simulation by one tick (drives spawners + belt movement). */
   advanceTick: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
@@ -84,17 +92,23 @@ interface InitState {
   world: Map<string, Machine>
   chunks: ChunkIndex
   savedAt: number
+  money: number
+  stores: Map<string, StorageState>
 }
 
 function initState(): InitState {
   const saved = loadSave()
   if (saved) {
     const world = worldFromMachines(saved.machines)
+    const stores = new Map<string, StorageState>()
+    for (const s of saved.stores) stores.set(s.key, { item: s.item, count: s.count })
     return {
       camera: saved.camera,
       world,
       chunks: buildChunkIndex(world, config.chunkSize),
       savedAt: saved.savedAt,
+      money: saved.money,
+      stores,
     }
   }
   const world = worldFromMachines(seedStarterKit())
@@ -103,6 +117,8 @@ function initState(): InitState {
     world,
     chunks: buildChunkIndex(world, config.chunkSize),
     savedAt: 0,
+    money: config.startingMoney,
+    stores: new Map(),
   }
 }
 
@@ -125,7 +141,7 @@ export const useGameStore = create<GameState>((set, get) => {
     scheduleAutosave()
   }
 
-  const { camera, world, chunks, savedAt } = initState()
+  const { camera, world, chunks, savedAt, money, stores } = initState()
 
   return {
     camera,
@@ -133,6 +149,9 @@ export const useGameStore = create<GameState>((set, get) => {
     chunks,
     items: new Map(),
     buffers: new Map(),
+    stores,
+    money,
+    online: true,
     tick: 0,
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
@@ -184,14 +203,15 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, items, buffers, selected } = get()
+      const { world: w, chunks: c, items, buffers, stores, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
       chunkRemove(c, cx, cy, config.chunkSize)
-      // Any item riding this cell, or buffered inside it, is removed with it.
+      // Any item riding this cell, or held inside it, is removed with it.
       items.delete(key)
       buffers.delete(key)
+      stores.delete(key)
       if (selected && selected.x === cx && selected.y === cy) {
         set({ selected: null })
       }
@@ -202,17 +222,39 @@ export const useGameStore = create<GameState>((set, get) => {
       set({ selected: { x: cx, y: cy } })
     },
 
+    sellAll: (cx, cy) => {
+      const { world: w, stores, money } = get()
+      const key = cellKey(cx, cy)
+      const machine = w.get(key)
+      if (!machine || machine.kind !== 'storage') return
+      const store = stores.get(key)
+      if (!store || store.item === null || store.count <= 0) return
+      const proceeds = store.count * basePrice(store.item)
+      // Liquidate: empty and unlock the storage (new type may lock in next).
+      const nextStores = new Map(stores)
+      nextStores.delete(key)
+      set({ stores: nextStores, money: money + proceeds })
+      scheduleAutosave()
+    },
+
     advanceTick: () => {
-      const { world: w, items, buffers, tick } = get()
-      const nextSim = step({ machines: w, items, buffers, tick })
-      set({ items: nextSim.items, buffers: nextSim.buffers, tick: nextSim.tick })
+      const { world: w, items, buffers, stores, money, online, tick } = get()
+      const nextSim = step({ machines: w, items, buffers, stores, money, online, tick })
+      set({
+        items: nextSim.items,
+        buffers: nextSim.buffers,
+        stores: nextSim.stores,
+        money: nextSim.money,
+        tick: nextSim.tick,
+      })
     },
 
     saveNow: () => {
-      const { camera: cam, world: w } = get()
+      const { camera: cam, world: w, money, stores } = get()
       const savedAtNow = Date.now()
       set({ savedAt: savedAtNow })
-      writeSave(makeSave(cam, [...w.values()], savedAtNow))
+      const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
+      writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList))
     },
   }
 })

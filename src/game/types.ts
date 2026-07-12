@@ -50,6 +50,8 @@ export interface CatalogEntry {
   outputItem?: string
   /** Spawner only: ticks between emissions. */
   rateTicks?: number
+  /** Storage only: maximum units it can hold (M5). */
+  capacity?: number
 }
 
 /** Processor recipe: one input item transforms into one output item. */

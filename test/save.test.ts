@@ -27,6 +27,23 @@ describe('save schema', () => {
     expect(parsed!.machines).toEqual(machines)
   })
 
+  it('round-trips money and storage contents (v2)', () => {
+    const stores = [{ key: '2,0', item: 'ore', count: 42 }]
+    const save = makeSave(camera, machines, 1, 1234.5, stores)
+    expect(save.version).toBe(2)
+    const parsed = parseSave(JSON.stringify(save))!
+    expect(parsed.money).toBe(1234.5)
+    expect(parsed.stores).toEqual(stores)
+  })
+
+  it('loads a legacy v1 save (no money/stores) with defaults', () => {
+    const legacy = { version: 1, savedAt: 5, camera, machines }
+    const parsed = parseSave(JSON.stringify(legacy))!
+    expect(parsed).not.toBeNull()
+    expect(parsed.money).toBe(0)
+    expect(parsed.stores).toEqual([])
+  })
+
   it('parseSave rejects malformed input', () => {
     expect(parseSave('not json')).toBeNull()
     expect(parseSave('42')).toBeNull()
