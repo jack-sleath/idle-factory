@@ -11,6 +11,7 @@ import {
   type ChunkIndex,
 } from '../game/world'
 import { basePrice, CATALOG_BY_ID } from '../data'
+import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
 import { loadSave, makeSave, writeSave } from '../game/save'
 import { step, type MachineBuffer, type StorageState } from '../game/tick'
@@ -184,14 +185,20 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     place: (cx, cy, catalogId) => {
-      const { world: w, chunks: c } = get()
+      const { world: w, chunks: c, money } = get()
       const key = cellKey(cx, cy)
       // Placement requires an empty cell (occupied → no-op; open-question default).
       if (w.has(key)) return
+      const entry = CATALOG_BY_ID[catalogId]
+      if (!entry) return
+      // Buying = placing: pay the effective cost (first basic of each is free).
+      const cost = effectiveCost(entry, countPlaced(w, catalogId))
+      if (money < cost) return // can't afford → no-op
       const machine = machineFromCatalog(catalogId, cx, cy)
       if (!machine) return
       w.set(key, machine)
       chunkAdd(c, cx, cy, config.chunkSize)
+      if (cost > 0) set({ money: money - cost })
       bump()
     },
 

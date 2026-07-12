@@ -134,6 +134,55 @@ describe('sell all (M5)', () => {
   })
 })
 
+describe('economy: buying = placing (M6)', () => {
+  beforeEach(resetToEmptyWorld) // money 0, empty world
+
+  it('gives the first basic free, then charges + deducts for a second', () => {
+    const store = useGameStore.getState()
+    store.place(0, 0, 'belt-basic') // first belt → free
+    expect(useGameStore.getState().world.has(cellKey(0, 0))).toBe(true)
+    expect(useGameStore.getState().money).toBe(0)
+
+    // A second belt costs 5; with $0 it can't be placed.
+    store.place(1, 0, 'belt-basic')
+    expect(useGameStore.getState().world.has(cellKey(1, 0))).toBe(false)
+
+    // With money, the second belt places and its cost is deducted.
+    useGameStore.setState({ money: 10 })
+    useGameStore.getState().place(1, 0, 'belt-basic')
+    expect(useGameStore.getState().world.has(cellKey(1, 0))).toBe(true)
+    expect(useGameStore.getState().money).toBe(5)
+  })
+
+  it('refuses to place a priced machine the player cannot afford', () => {
+    useGameStore.setState({ money: 40 })
+    useGameStore.getState().place(2, 2, 'seller-basic') // costs 50
+    expect(useGameStore.getState().world.has(cellKey(2, 2))).toBe(false)
+    expect(useGameStore.getState().money).toBe(40) // unchanged
+  })
+
+  it('recovers a fully-deleted world from $0 via the free-first basics', () => {
+    const store = useGameStore.getState()
+    store.place(0, 0, 'ore-gatherer-basic') // free (none placed)
+    store.place(1, 0, 'belt-basic') // free
+    store.place(2, 0, 'storage-basic') // free
+    const w = useGameStore.getState().world
+    expect(w.has(cellKey(0, 0)) && w.has(cellKey(1, 0)) && w.has(cellKey(2, 0))).toBe(true)
+    expect(useGameStore.getState().money).toBe(0) // rebuilt for free
+  })
+
+  it('buying a spawner variant (cow) produces its own item (milk)', () => {
+    const store = useGameStore.getState()
+    useGameStore.setState({ money: 200 })
+    store.place(0, 0, 'cow') // 🐄 costs 100 → milk every 6 ticks
+    store.place(1, 0, 'belt-basic') // free first belt
+    expect(useGameStore.getState().money).toBe(100)
+
+    for (let i = 0; i < 12; i++) useGameStore.getState().advanceTick()
+    expect([...useGameStore.getState().items.values()]).toContain('milk')
+  })
+})
+
 describe('persistence (reload restores layout)', () => {
   beforeEach(resetToEmptyWorld)
 

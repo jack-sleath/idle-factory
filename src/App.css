@@ -105,11 +105,32 @@
   background: rgba(240, 180, 41, 0.16);
 }
 
+.palette__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.palette__btn:disabled:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .palette__label {
   font-size: 10px;
   line-height: 1;
   opacity: 0.8;
   white-space: nowrap;
+}
+
+.palette__cost {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.palette__cost.is-free {
+  color: #6ee7a8;
 }
 
 /* Storage inspector, floated over the world in the top-right of the stage. */
