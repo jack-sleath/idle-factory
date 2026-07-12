@@ -10,11 +10,12 @@ import {
   nextDir,
   type ChunkIndex,
 } from '../game/world'
-import { basePrice, CATALOG_BY_ID } from '../data'
+import { CATALOG_BY_ID } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
 import { loadSave, makeSave, writeSave } from '../game/save'
 import { step, type MachineBuffer, type StorageState } from '../game/tick'
+import { catchUpMarket, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -37,6 +38,8 @@ export interface GameState {
   stores: Map<string, StorageState>
   /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
   money: number
+  /** Stock-market state: prices, last-10 histories, and last update time. */
+  market: Market
   /** Whether live selling is active (offline gating arrives in M9). */
   online: boolean
   /** Monotonic simulation tick counter. */
@@ -60,6 +63,8 @@ export interface GameState {
   select: (cx: number, cy: number) => void
   /** Sell a storage's full stockpile at the current price, banking the money. */
   sellAll: (cx: number, cy: number) => void
+  /** Apply any market intervals that have elapsed (wall-clock driven). */
+  advanceMarket: () => void
   /** Advance the simulation by one tick (drives spawners + belt movement). */
   advanceTick: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
@@ -95,14 +100,18 @@ interface InitState {
   savedAt: number
   money: number
   stores: Map<string, StorageState>
+  market: Market
 }
 
 function initState(): InitState {
+  const now = Date.now()
   const saved = loadSave()
   if (saved) {
     const world = worldFromMachines(saved.machines)
     const stores = new Map<string, StorageState>()
     for (const s of saved.stores) stores.set(s.key, { item: s.item, count: s.count })
+    // Advance the market by however many intervals elapsed while away (capped).
+    const market = catchUpMarket(saved.market ?? seedMarket(now), now, Math.random)
     return {
       camera: saved.camera,
       world,
@@ -110,6 +119,7 @@ function initState(): InitState {
       savedAt: saved.savedAt,
       money: saved.money,
       stores,
+      market,
     }
   }
   const world = worldFromMachines(seedStarterKit())
@@ -120,6 +130,7 @@ function initState(): InitState {
     savedAt: 0,
     money: config.startingMoney,
     stores: new Map(),
+    market: seedMarket(now),
   }
 }
 
@@ -142,7 +153,7 @@ export const useGameStore = create<GameState>((set, get) => {
     scheduleAutosave()
   }
 
-  const { camera, world, chunks, savedAt, money, stores } = initState()
+  const { camera, world, chunks, savedAt, money, stores, market } = initState()
 
   return {
     camera,
@@ -152,6 +163,7 @@ export const useGameStore = create<GameState>((set, get) => {
     buffers: new Map(),
     stores,
     money,
+    market,
     online: true,
     tick: 0,
     tool: { kind: 'build', catalogId: 'belt-basic' },
@@ -230,13 +242,13 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     sellAll: (cx, cy) => {
-      const { world: w, stores, money } = get()
+      const { world: w, stores, money, market } = get()
       const key = cellKey(cx, cy)
       const machine = w.get(key)
       if (!machine || machine.kind !== 'storage') return
       const store = stores.get(key)
       if (!store || store.item === null || store.count <= 0) return
-      const proceeds = store.count * basePrice(store.item)
+      const proceeds = store.count * livePrice(market, store.item)
       // Liquidate: empty and unlock the storage (new type may lock in next).
       const nextStores = new Map(stores)
       nextStores.delete(key)
@@ -244,9 +256,27 @@ export const useGameStore = create<GameState>((set, get) => {
       scheduleAutosave()
     },
 
+    advanceMarket: () => {
+      const current = get().market
+      const next = catchUpMarket(current, Date.now(), Math.random)
+      if (next !== current) {
+        set({ market: next })
+        scheduleAutosave()
+      }
+    },
+
     advanceTick: () => {
-      const { world: w, items, buffers, stores, money, online, tick } = get()
-      const nextSim = step({ machines: w, items, buffers, stores, money, online, tick })
+      const { world: w, items, buffers, stores, money, market, online, tick } = get()
+      const nextSim = step({
+        machines: w,
+        items,
+        buffers,
+        stores,
+        money,
+        prices: priceSnapshot(market),
+        online,
+        tick,
+      })
       set({
         items: nextSim.items,
         buffers: nextSim.buffers,
@@ -257,11 +287,11 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     saveNow: () => {
-      const { camera: cam, world: w, money, stores } = get()
+      const { camera: cam, world: w, money, stores, market } = get()
       const savedAtNow = Date.now()
       set({ savedAt: savedAtNow })
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
-      writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList))
+      writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList, market))
     },
   }
 })
