@@ -72,9 +72,9 @@
 - Any non-matching processing or pairing emits the configured junk item.
 
 **Done when:**
-- [ ] A valid processor recipe transforms its input; a blocked output makes it hold (no loss).
-- [ ] A valid combiner recipe combines two inputs (either input order) into one output.
-- [ ] An unprocessable input or non-recipe pairing produces junk.
+- [x] A valid processor recipe transforms its input; a blocked output makes it hold (no loss).
+- [x] A valid combiner recipe combines two inputs (either input order) into one output.
+- [x] An unprocessable input or non-recipe pairing produces junk.
 
 ---
 
