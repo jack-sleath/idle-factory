@@ -22,9 +22,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webp,woff2,json}'],
       },
       manifest: {
-        name: 'Idle Factory',
-        short_name: 'IdleFactory',
-        description: 'A browser idle/incremental factory game built with emoji sprites.',
+        name: 'Auto-Exportica',
+        short_name: 'Exportica',
+        description: 'An idle factory game. You alone can make it happen.',
         theme_color: '#f0b429',
         background_color: '#1f2933',
         display: 'standalone',
