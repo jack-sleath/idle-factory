@@ -1,0 +1,9 @@
+{
+  "processor": [
+    { "in": "ore", "out": "brick" },
+    { "in": "milk", "out": "cheese" }
+  ],
+  "combiner": [
+    { "a": "brick", "b": "gem", "out": "ring" }
+  ]
+}

@@ -42,7 +42,14 @@ const CDN_BASES = [
 ]
 
 // The emoji currently rendered anywhere in the app (world sprites + UI chrome).
-const EMOJI = ['⛏️', '➡️', '📦', '🪨', '🐄', '🥛', '🏭']
+const EMOJI = [
+  // M1 demo / HUD
+  '⛏️', '➡️', '📦', '🪨', '🐄', '🥛', '🏭',
+  // M2 machines (catalog build tools)
+  '💰', '⚙️', '🔀', '⚒️',
+  // M2 action tools (palette chrome)
+  '🔍', '🔄', '❌',
+]
 
 async function fetchSvg(cp) {
   for (const base of CDN_BASES) {

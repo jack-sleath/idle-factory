@@ -1,0 +1,9 @@
+[
+  { "id": "ore", "name": "Ore", "emoji": "🪨", "startingValue": 1, "minPrice": 0.1, "maxPrice": 50 },
+  { "id": "milk", "name": "Milk", "emoji": "🥛", "startingValue": 2, "minPrice": 0.2, "maxPrice": 80 },
+  { "id": "gem", "name": "Gem", "emoji": "💎", "startingValue": 10, "minPrice": 1, "maxPrice": 500 },
+  { "id": "brick", "name": "Brick", "emoji": "🧱", "startingValue": 4, "minPrice": 0.5, "maxPrice": 200 },
+  { "id": "cheese", "name": "Cheese", "emoji": "🧀", "startingValue": 6, "minPrice": 0.5, "maxPrice": 250 },
+  { "id": "ring", "name": "Ring", "emoji": "💍", "startingValue": 40, "minPrice": 5, "maxPrice": 2000 },
+  { "id": "junk", "name": "Junk", "emoji": "🗑️", "startingValue": 0.1, "minPrice": 0.01, "maxPrice": 5 }
+]
