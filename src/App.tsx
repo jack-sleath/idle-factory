@@ -4,6 +4,7 @@ import { GameCanvas } from './components/GameCanvas'
 import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
 import { MarketPanel } from './components/MarketPanel'
+import { SaveMenu } from './components/SaveMenu'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useMarketLoop } from './hooks/useMarketLoop'
 import { useGameStore } from './store/gameStore'
@@ -32,6 +33,7 @@ export default function App() {
   useMarketLoop()
   const money = useGameStore((s) => s.money)
   const [marketOpen, setMarketOpen] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
 
   return (
     <div className="app">
@@ -49,6 +51,14 @@ export default function App() {
           >
             <Emoji emoji="📈" size={16} label="market" /> Market
           </button>
+          <button
+            type="button"
+            className={`hud__btn${saveOpen ? ' is-active' : ''}`}
+            aria-pressed={saveOpen}
+            onClick={() => setSaveOpen((open) => !open)}
+          >
+            <Emoji emoji="💾" size={16} label="saves" /> Saves
+          </button>
           <span className="hud__money" title="Money">
             <Emoji emoji="💰" size={18} label="money" /> {formatMoney(money)}
           </span>
@@ -58,6 +68,7 @@ export default function App() {
         <GameCanvas />
         <StoragePanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
+        {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
       </main>
       <Palette />
     </div>

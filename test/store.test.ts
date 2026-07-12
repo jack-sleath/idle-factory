@@ -183,6 +183,56 @@ describe('economy: buying = placing (M6)', () => {
   })
 })
 
+describe('save management: export / import (M8)', () => {
+  beforeEach(resetToEmptyWorld)
+
+  it('exports a valid JSON save carrying the current game state', () => {
+    const store = useGameStore.getState()
+    store.place(0, 0, 'ore-gatherer-basic')
+    store.place(1, 0, 'belt-basic')
+    useGameStore.setState({ money: 777 })
+
+    const json = useGameStore.getState().exportSaveString()
+    const parsed = JSON.parse(json) // must be valid JSON
+    expect(parsed.version).toBe(config.saveVersion)
+    expect(parsed.money).toBe(777)
+    expect(parsed.machines).toHaveLength(2)
+    expect(parsed.market).toBeTruthy()
+  })
+
+  it('imports an exported save and fully restores the game state', () => {
+    const store = useGameStore.getState()
+    store.place(2, 3, 'ore-gatherer-basic')
+    store.place(3, 3, 'belt-basic')
+    useGameStore.setState({
+      money: 1234,
+      stores: new Map([[cellKey(5, 5), { item: 'gem', count: 7 }]]),
+    })
+    const json = useGameStore.getState().exportSaveString()
+
+    // Wipe everything, then import.
+    resetToEmptyWorld()
+    expect(useGameStore.getState().world.size).toBe(0)
+    expect(useGameStore.getState().importSave(json)).toBe(true)
+
+    const s = useGameStore.getState()
+    expect(s.money).toBe(1234)
+    expect(s.world.get(cellKey(2, 3))?.kind).toBe('spawner')
+    expect(s.world.get(cellKey(3, 3))?.kind).toBe('belt')
+    expect(s.stores.get(cellKey(5, 5))).toEqual({ item: 'gem', count: 7 })
+  })
+
+  it('rejects malformed import data without changing state', () => {
+    const store = useGameStore.getState()
+    store.place(1, 1, 'belt-basic')
+    useGameStore.setState({ money: 50 })
+
+    expect(useGameStore.getState().importSave('not json')).toBe(false)
+    expect(useGameStore.getState().money).toBe(50) // unchanged
+    expect(useGameStore.getState().world.has(cellKey(1, 1))).toBe(true)
+  })
+})
+
 describe('persistence (reload restores layout)', () => {
   beforeEach(resetToEmptyWorld)
 

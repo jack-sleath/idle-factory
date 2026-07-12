@@ -141,8 +141,8 @@
 - Versioned save schema with a version field.
 
 **Done when:**
-- [ ] Export produces a valid JSON save file.
-- [ ] Import fully restores game state from that file.
+- [x] Export produces a valid JSON save file.
+- [x] Import fully restores game state from that file.
 
 ---
 

@@ -13,7 +13,7 @@ import {
 import { CATALOG_BY_ID } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
-import { loadSave, makeSave, writeSave } from '../game/save'
+import { loadSave, makeSave, parseSave, writeSave, type GameSave } from '../game/save'
 import { step, type MachineBuffer, type StorageState } from '../game/tick'
 import { catchUpMarket, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 
@@ -69,6 +69,12 @@ export interface GameState {
   advanceTick: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
   saveNow: () => void
+  /** Serialize the current game to a pretty-printed JSON save string (M8). */
+  exportSaveString: () => string
+  /** Restore state from a JSON save string; returns false if it is invalid. */
+  importSave: (json: string) => boolean
+  /** Reload the last localStorage save into memory; false if none exists. */
+  loadFromStorage: () => boolean
 }
 
 function machineFromCatalog(catalogId: string, x: number, y: number): Machine | null {
@@ -151,6 +157,28 @@ export const useGameStore = create<GameState>((set, get) => {
   const bump = () => {
     set({ worldRev: get().worldRev + 1 })
     scheduleAutosave()
+  }
+
+  // Replace all in-memory game state from a parsed save (used by Load + Import).
+  // Transient items/buffers are dropped (they are never persisted); the selection
+  // is cleared as it may point at a machine that no longer exists.
+  const applySave = (save: GameSave) => {
+    const w = worldFromMachines(save.machines)
+    const nextStores = new Map<string, StorageState>()
+    for (const s of save.stores) nextStores.set(s.key, { item: s.item, count: s.count })
+    set({
+      camera: save.camera,
+      world: w,
+      chunks: buildChunkIndex(w, config.chunkSize),
+      items: new Map(),
+      buffers: new Map(),
+      stores: nextStores,
+      money: save.money,
+      market: save.market ?? seedMarket(Date.now()),
+      savedAt: save.savedAt,
+      selected: null,
+      worldRev: get().worldRev + 1,
+    })
   }
 
   const { camera, world, chunks, savedAt, money, stores, market } = initState()
@@ -292,6 +320,28 @@ export const useGameStore = create<GameState>((set, get) => {
       set({ savedAt: savedAtNow })
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
       writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList, market))
+    },
+
+    exportSaveString: () => {
+      const { camera: cam, world: w, money, stores, market, savedAt: at } = get()
+      const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
+      const save = makeSave(cam, [...w.values()], at || Date.now(), money, storeList, market)
+      return JSON.stringify(save, null, 2)
+    },
+
+    importSave: (json) => {
+      const save = parseSave(json)
+      if (!save) return false
+      applySave(save)
+      get().saveNow() // persist the imported state as the new autosave
+      return true
+    },
+
+    loadFromStorage: () => {
+      const save = loadSave()
+      if (!save) return false
+      applySave(save)
+      return true
     },
   }
 })
