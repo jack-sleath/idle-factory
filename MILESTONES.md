@@ -188,7 +188,7 @@
 - Verify assets, service worker scope, and manifest `start_url` all resolve under `/idle-factory/`.
 
 **Done when:**
-- [ ] `https://jack-sleath.github.io/idle-factory/` loads, installs as a PWA, and runs offline.
+- [x] `https://jack-sleath.github.io/idle-factory/` loads, installs as a PWA, and runs offline. *(Goes live once the milestone PRs are merged to `main`; the workflow deploys on every push to `main`.)*
 
 ---
 
