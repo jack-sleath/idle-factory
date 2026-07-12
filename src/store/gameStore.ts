@@ -16,6 +16,7 @@ import { config } from '../data/config'
 import { loadSave, makeSave, parseSave, writeSave, type GameSave } from '../game/save'
 import { step, type MachineBuffer, type StorageState } from '../game/tick'
 import { catchUpMarket, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
+import { computeOffline, type AwaySummary } from '../game/offline'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -40,8 +41,10 @@ export interface GameState {
   money: number
   /** Stock-market state: prices, last-10 histories, and last update time. */
   market: Market
-  /** Whether live selling is active (offline gating arrives in M9). */
+  /** Whether live selling is active (false only during offline sampling). */
   online: boolean
+  /** Summary of the last offline catch-up, shown until dismissed (M9). */
+  lastAway: AwaySummary | null
   /** Monotonic simulation tick counter. */
   tick: number
   /** Active tool. */
@@ -65,6 +68,10 @@ export interface GameState {
   sellAll: (cx: number, cy: number) => void
   /** Apply any market intervals that have elapsed (wall-clock driven). */
   advanceMarket: () => void
+  /** Catch up stockpiles + earnings for time spent away, then set a summary. */
+  applyOfflineProgress: () => void
+  /** Dismiss the away summary. */
+  dismissAway: () => void
   /** Advance the simulation by one tick (drives spawners + belt movement). */
   advanceTick: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
@@ -144,6 +151,10 @@ function initState(): InitState {
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 const AUTOSAVE_DELAY_MS = 600
 
+// Live play always sells online, so the seller buffer is never written; share a
+// single empty map (step copies it defensively) to avoid a per-tick allocation.
+const EMPTY_SELLER_BUFFERS: Map<string, Record<string, number>> = new Map()
+
 export const useGameStore = create<GameState>((set, get) => {
   const scheduleAutosave = () => {
     if (typeof setTimeout === 'undefined') return
@@ -193,6 +204,7 @@ export const useGameStore = create<GameState>((set, get) => {
     money,
     market,
     online: true,
+    lastAway: null,
     tick: 0,
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
@@ -293,6 +305,29 @@ export const useGameStore = create<GameState>((set, get) => {
       }
     },
 
+    applyOfflineProgress: () => {
+      const { world, stores, market, money, savedAt } = get()
+      if (savedAt <= 0) return // brand-new game: nothing to catch up
+      const now = Date.now()
+      const result = computeOffline({ machines: world, stores, market, money, savedAt }, now, Math.random)
+      // Show a summary only for a meaningful absence, to avoid noise on quick
+      // tab switches (but the market/stockpile catch-up always applies).
+      const worthShowing = result.summary.elapsedMs >= 60_000 &&
+        (result.summary.earned > 0 || result.summary.stockpiled.length > 0)
+      set({
+        stores: result.stores,
+        market: result.market,
+        money: result.money,
+        items: new Map(), // in-flight belt items vanish across a time skip
+        buffers: new Map(),
+        savedAt: now,
+        lastAway: worthShowing ? result.summary : get().lastAway,
+      })
+      get().saveNow()
+    },
+
+    dismissAway: () => set({ lastAway: null }),
+
     advanceTick: () => {
       const { world: w, items, buffers, stores, money, market, online, tick } = get()
       const nextSim = step({
@@ -300,6 +335,7 @@ export const useGameStore = create<GameState>((set, get) => {
         items,
         buffers,
         stores,
+        sellerBuffers: EMPTY_SELLER_BUFFERS, // live play sells online; never buffers
         money,
         prices: priceSnapshot(market),
         online,

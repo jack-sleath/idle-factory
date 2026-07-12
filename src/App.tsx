@@ -5,8 +5,10 @@ import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
 import { MarketPanel } from './components/MarketPanel'
 import { SaveMenu } from './components/SaveMenu'
+import { AwaySummary } from './components/AwaySummary'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useMarketLoop } from './hooks/useMarketLoop'
+import { useOfflineProgress } from './hooks/useOfflineProgress'
 import { useGameStore } from './store/gameStore'
 import { formatMoney } from './lib/format'
 import './App.css'
@@ -29,6 +31,7 @@ function useAutosaveOnHide() {
 
 export default function App() {
   useAutosaveOnHide()
+  useOfflineProgress()
   useGameLoop()
   useMarketLoop()
   const money = useGameStore((s) => s.money)
@@ -69,6 +72,7 @@ export default function App() {
         <StoragePanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
+        <AwaySummary />
       </main>
       <Palette />
     </div>

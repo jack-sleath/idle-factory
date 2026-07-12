@@ -38,13 +38,14 @@ function mkState(
   items: Map<string, string>,
   tick: number,
   buffers: Map<string, MachineBuffer> = new Map(),
-  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online' | 'prices'>> = {},
+  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online' | 'prices' | 'sellerBuffers'>> = {},
 ): SimState {
   return {
     machines,
     items,
     buffers,
     stores: extra.stores ?? new Map(),
+    sellerBuffers: extra.sellerBuffers ?? new Map(),
     money: extra.money ?? 0,
     prices: extra.prices ?? {},
     online: extra.online ?? true,
@@ -277,11 +278,12 @@ describe('sellers (M5)', () => {
     expect(s.items.size).toBe(0) // consumed by the seller
   })
 
-  it('sells nothing while offline; the item backs up (buffering added in M9)', () => {
+  it('buffers instead of selling while offline (no money, item consumed, M9)', () => {
     const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
     const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { money: 100, online: false }))
-    expect(s.money).toBe(100) // no credit offline
-    expect(itemAt(s, 0, 0)).toBe('gem') // inert seller → held on the belt
+    expect(s.money).toBe(100) // no credit while offline
+    expect(itemAt(s, 0, 0)).toBeUndefined() // consumed off the belt
+    expect(s.sellerBuffers.get(cellKey(1, 0))).toEqual({ gem: 1 }) // buffered for catch-up
   })
 
   it('credits money at the live market price when one is supplied (M7)', () => {
