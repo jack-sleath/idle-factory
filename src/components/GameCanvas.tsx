@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { SpriteCache } from '../render/sprites'
-import { renderScene, type RenderTile } from '../render/renderer'
+import { renderScene, type RenderItem, type RenderTile } from '../render/renderer'
 import { screenToWorld, type Camera } from '../render/camera'
-import { collectVisible } from '../game/world'
-import { CATALOG_BY_ID } from '../data'
+import { collectVisible, parseCellKey } from '../game/world'
+import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 
 const TAP_MOVE_THRESHOLD_PX = 8
@@ -67,20 +67,16 @@ export function GameCanvas() {
 
     const loop = () => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, selected } = useGameStore.getState()
+      const { camera, world, chunks, items, selected } = useGameStore.getState()
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
       const br = screenToWorld(camera, cssW, cssH, cssW, cssH)
-      const machines = collectVisible(
-        world,
-        chunks,
-        config.chunkSize,
-        Math.floor(tl.wx) - 1,
-        Math.floor(tl.wy) - 1,
-        Math.ceil(br.wx) + 1,
-        Math.ceil(br.wy) + 1,
-      )
+      const minCx = Math.floor(tl.wx) - 1
+      const minCy = Math.floor(tl.wy) - 1
+      const maxCx = Math.ceil(br.wx) + 1
+      const maxCy = Math.ceil(br.wy) + 1
+      const machines = collectVisible(world, chunks, config.chunkSize, minCx, minCy, maxCx, maxCy)
       const tiles: RenderTile[] = machines.map((m) => ({
         cx: m.x,
         cy: m.y,
@@ -89,7 +85,15 @@ export function GameCanvas() {
         dir: m.dir,
       }))
 
-      renderScene(ctx, camera, cssW, cssH, dpr, spritesRef.current, tiles, selected)
+      const itemTiles: RenderItem[] = []
+      for (const [key, type] of items) {
+        const { x, y } = parseCellKey(key)
+        if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
+        const emoji = ITEMS_BY_ID[type]?.emoji
+        if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
+      }
+
+      renderScene(ctx, camera, cssW, cssH, dpr, spritesRef.current, tiles, itemTiles, selected)
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)

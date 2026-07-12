@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Emoji } from './components/Emoji'
 import { GameCanvas } from './components/GameCanvas'
 import { Palette } from './components/Palette'
+import { useGameLoop } from './hooks/useGameLoop'
 import { useGameStore } from './store/gameStore'
 import './App.css'
 
@@ -23,6 +24,7 @@ function useAutosaveOnHide() {
 
 export default function App() {
   useAutosaveOnHide()
+  useGameLoop()
 
   return (
     <div className="app">
