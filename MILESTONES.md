@@ -6,7 +6,7 @@
 - **State management:** Zustand
 - **Rendering:** Canvas 2D (pan/zoom camera + viewport culling) drawing Twemoji `14.0.2` sprites over a sparse, **unbounded** world; UI chrome uses DOM Twemoji
 - **Database / storage:** `localStorage` (versioned JSON) + JSON export/import; Google Drive (later)
-- **Hosting/Infrastructure:** GitHub Pages project site (`base: '/idle-factory/'`) via GitHub Actions (deploy is a later milestone)
+- **Hosting/Infrastructure:** GitHub Pages via GitHub Actions, served at the custom subdomain root `auto-exportica.jack-sleath.dev` (`base: '/'`, `public/CNAME`)
 
 ---
 
@@ -188,7 +188,7 @@
 - Verify assets, service worker scope, and manifest `start_url` all resolve under `/idle-factory/`.
 
 **Done when:**
-- [x] `https://jack-sleath.github.io/idle-factory/` loads, installs as a PWA, and runs offline. *(Goes live once the milestone PRs are merged to `main`; the workflow deploys on every push to `main`.)*
+- [x] `https://auto-exportica.jack-sleath.dev/` loads, installs as a PWA, and runs offline. *(Served at a custom subdomain root via `public/CNAME`; `base` is `/`. Goes live once the milestone PRs are merged to `main` and the subdomain's DNS CNAME → `jack-sleath.github.io` is in place; the workflow deploys on every push to `main`.)*
 
 ---
 

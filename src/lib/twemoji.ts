@@ -35,6 +35,7 @@ export function emojiToCodePoint(emoji: string): string {
 
 /** Absolute URL (respecting the app base path) of an emoji's vendored SVG. */
 export function twemojiUrl(emoji: string): string {
-  // BASE_URL always ends with '/', e.g. '/idle-factory/'.
+  // BASE_URL always ends with '/' (here '/', since the app is served at a
+  // custom-domain root).
   return `${import.meta.env.BASE_URL}twemoji/${emojiToCodePoint(emoji)}.svg`
 }

@@ -2,10 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// GitHub Pages project site is served under /idle-factory/.
-// All runtime asset URLs derive from import.meta.env.BASE_URL, which Vite
-// populates from this `base` value.
-const BASE = '/idle-factory/'
+// Served at the root of the custom domain auto-exportica.jack-sleath.dev
+// (see public/CNAME), so the base path is '/'. All runtime asset URLs derive
+// from import.meta.env.BASE_URL, which Vite populates from this `base` value.
+const BASE = '/'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -29,8 +29,8 @@ export default defineConfig({
         background_color: '#1f2933',
         display: 'standalone',
         orientation: 'portrait',
-        // scope and start_url default to Vite `base` ('/idle-factory/'),
-        // which is exactly what GitHub Pages needs; set explicitly for clarity.
+        // scope and start_url follow Vite `base` ('/' on the custom domain);
+        // set explicitly for clarity.
         scope: BASE,
         start_url: BASE,
         icons: [
