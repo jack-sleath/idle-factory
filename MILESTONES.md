@@ -174,8 +174,8 @@
 - Number-formatting polish; onboarding hint.
 
 **Done when:**
-- [ ] The game is comfortably playable one-handed on a phone.
-- [ ] Camera gestures and placement taps don't interfere with each other.
+- [x] The game is comfortably playable one-handed on a phone.
+- [x] Camera gestures and placement taps don't interfere with each other.
 
 ---
 

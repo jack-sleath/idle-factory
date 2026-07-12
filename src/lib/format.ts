@@ -16,10 +16,15 @@ export function formatShort(n: number): string {
   if (n < 0) return '-' + formatShort(-n)
   if (n < 1000) return trimNumber(n)
 
-  const tier = Math.floor(Math.log10(n) / 3)
+  let tier = Math.floor(Math.log10(n) / 3)
+  let scaled = n / 1000 ** tier
+  // A value like 999_999 scales to 999.999, which rounds up to "1000" — roll it
+  // into the next suffix so we show "1M", not "1000K".
+  if (scaled >= 999.5 && tier + 1 < SUFFIXES.length) {
+    tier += 1
+    scaled = n / 1000 ** tier
+  }
   if (tier >= SUFFIXES.length) return n.toExponential(2)
-
-  const scaled = n / 1000 ** tier
   return trim3sig(scaled) + SUFFIXES[tier]
 }
 

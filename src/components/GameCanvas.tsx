@@ -185,7 +185,19 @@ export function GameCanvas() {
       tapCell(Math.floor(wx), Math.floor(wy))
     }
 
-    if (pointers.current.size === 0) gesture.current = null
+    if (pointers.current.size === 0) {
+      gesture.current = null
+    } else if (pointers.current.size === 1) {
+      // Lifting one finger of a pinch: re-anchor panning to the finger still
+      // down so the camera doesn't jump, and never treat the tail as a tap.
+      const [remaining] = [...pointers.current.values()]
+      gesture.current = {
+        moved: TAP_MOVE_THRESHOLD_PX + 1,
+        startX: remaining.x,
+        startY: remaining.y,
+        pinchDist: null,
+      }
+    }
   }
 
   const onWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
