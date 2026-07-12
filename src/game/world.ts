@@ -10,6 +10,11 @@ export function cellKey(x: number, y: number): CellKey {
   return `${x},${y}`
 }
 
+export function parseCellKey(key: CellKey): { x: number; y: number } {
+  const comma = key.indexOf(',')
+  return { x: Number(key.slice(0, comma)), y: Number(key.slice(comma + 1)) }
+}
+
 export function chunkKey(x: number, y: number, chunkSize: number): ChunkKey {
   return `${Math.floor(x / chunkSize)},${Math.floor(y / chunkSize)}`
 }

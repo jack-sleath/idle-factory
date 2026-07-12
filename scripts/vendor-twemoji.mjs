@@ -49,6 +49,8 @@ const EMOJI = [
   '💰', '⚙️', '🔀', '⚒️',
   // M2 action tools (palette chrome)
   '🔍', '🔄', '❌',
+  // M3 spawnable item (deep miner output; ore/milk already vendored)
+  '💎',
 ]
 
 async function fetchSvg(cp) {

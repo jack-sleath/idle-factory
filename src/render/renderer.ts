@@ -12,6 +12,13 @@ export interface RenderTile {
   dir: Dir
 }
 
+/** An item riding a cell, drawn on top of machines. */
+export interface RenderItem {
+  cx: number
+  cy: number
+  emoji: string
+}
+
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)'
 const BG_COLOR = '#141b22'
 const ACCENT = '#f0b429'
@@ -31,6 +38,7 @@ export function renderScene(
   dpr: number,
   sprites: SpriteCache,
   tiles: Iterable<RenderTile>,
+  items: Iterable<RenderItem>,
   selected: { x: number; y: number } | null,
 ): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -82,6 +90,19 @@ export function renderScene(
     }
     // Non-belt machines get a chevron on the output edge to show orientation.
     drawChevron(ctx, sx, sy, cell, t.dir)
+  }
+
+  // Items ride on top of the belt cells, drawn a little smaller.
+  const itemSize = cell * 0.6
+  for (const it of items) {
+    const { sx, sy } = worldToScreen(cam, viewportW, viewportH, it.cx + 0.5, it.cy + 0.5)
+    if (sx < -cell || sx > viewportW + cell || sy < -cell || sy > viewportH + cell) {
+      continue
+    }
+    const bitmap = sprites.get(it.emoji)
+    if (bitmap) {
+      ctx.drawImage(bitmap, sx - itemSize / 2, sy - itemSize / 2, itemSize, itemSize)
+    }
   }
 }
 

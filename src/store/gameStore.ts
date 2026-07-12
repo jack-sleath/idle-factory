@@ -13,6 +13,7 @@ import {
 import { CATALOG_BY_ID } from '../data'
 import { config } from '../data/config'
 import { loadSave, makeSave, writeSave } from '../game/save'
+import { step } from '../game/tick'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -27,6 +28,10 @@ export interface GameState {
   world: Map<string, Machine>
   /** Chunk index over `world` for viewport culling. */
   chunks: ChunkIndex
+  /** Items in transit, keyed by cell: cell key `x,y` → item type id. */
+  items: Map<string, string>
+  /** Monotonic simulation tick counter. */
+  tick: number
   /** Active tool. */
   tool: Tool
   /** Cell currently selected via the Select tool (for panels/highlight). */
@@ -44,6 +49,8 @@ export interface GameState {
   rotate: (cx: number, cy: number) => void
   remove: (cx: number, cy: number) => void
   select: (cx: number, cy: number) => void
+  /** Advance the simulation by one tick (drives spawners + belt movement). */
+  advanceTick: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
   saveNow: () => void
 }
@@ -122,6 +129,8 @@ export const useGameStore = create<GameState>((set, get) => {
     camera,
     world,
     chunks,
+    items: new Map(),
+    tick: 0,
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
     savedAt,
@@ -172,11 +181,13 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, selected } = get()
+      const { world: w, chunks: c, items, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
       chunkRemove(c, cx, cy, config.chunkSize)
+      // Any item riding this cell is removed with the machine.
+      items.delete(key)
       if (selected && selected.x === cx && selected.y === cy) {
         set({ selected: null })
       }
@@ -185,6 +196,12 @@ export const useGameStore = create<GameState>((set, get) => {
 
     select: (cx, cy) => {
       set({ selected: { x: cx, y: cy } })
+    },
+
+    advanceTick: () => {
+      const { world: w, items, tick } = get()
+      const nextSim = step({ machines: w, items, tick })
+      set({ items: nextSim.items, tick: nextSim.tick })
     },
 
     saveNow: () => {

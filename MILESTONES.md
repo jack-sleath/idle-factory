@@ -57,8 +57,8 @@
 - Render items as sprites on top of belt cells.
 
 **Done when:**
-- [ ] A spawner→belt→belt chain visibly moves an item one cell each tick.
-- [ ] A packed belt advances as a unit when the head clears; a blocked belt applies back-pressure without duplicating or dropping items; a merge resolves deterministically.
+- [x] A spawner→belt→belt chain visibly moves an item one cell each tick.
+- [x] A packed belt advances as a unit when the head clears; a blocked belt applies back-pressure without duplicating or dropping items; a merge resolves deterministically.
 
 ---
 
