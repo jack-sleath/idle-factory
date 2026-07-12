@@ -1,20 +1,27 @@
 import { worldToScreen, screenToWorld, type Camera } from './camera'
 import type { SpriteCache } from './sprites'
+import type { Dir, MachineKind } from '../game/types'
+import { dirAngle, dirDelta } from '../game/world'
 
-/** A single emoji sprite placed at an integer world cell. */
-export interface Tile {
+/** A machine to draw, in integer world-cell coordinates. */
+export interface RenderTile {
   cx: number
   cy: number
   emoji: string
+  kind: MachineKind
+  dir: Dir
 }
 
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)'
 const BG_COLOR = '#141b22'
+const ACCENT = '#f0b429'
 
 /**
- * Draws the visible scene: a faint grid plus every tile whose cell falls inside
- * the viewport (culling). Coordinates are in CSS pixels; the caller sets the
- * device-pixel-ratio transform on the context.
+ * Draws the visible scene: a faint grid, an optional selection highlight, and
+ * every provided tile (already culled to the viewport by the caller). Belts are
+ * drawn as arrows rotated to their facing; other machines are drawn upright
+ * with a chevron on their output edge so orientation is always visible.
+ * Coordinates are CSS pixels; the caller sets the device-pixel-ratio transform.
  */
 export function renderScene(
   ctx: CanvasRenderingContext2D,
@@ -23,7 +30,8 @@ export function renderScene(
   viewportH: number,
   dpr: number,
   sprites: SpriteCache,
-  tiles: Iterable<Tile>,
+  tiles: Iterable<RenderTile>,
+  selected: { x: number; y: number } | null,
 ): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, viewportW, viewportH)
@@ -33,24 +41,80 @@ export function renderScene(
   drawGrid(ctx, cam, viewportW, viewportH)
 
   const cell = cam.zoom
-  const spriteSize = cell * 0.9
+
+  if (selected) {
+    const { sx, sy } = worldToScreen(cam, viewportW, viewportH, selected.x + 0.5, selected.y + 0.5)
+    ctx.strokeStyle = ACCENT
+    ctx.lineWidth = 2
+    ctx.strokeRect(sx - cell / 2, sy - cell / 2, cell, cell)
+    ctx.fillStyle = 'rgba(240, 180, 41, 0.12)'
+    ctx.fillRect(sx - cell / 2, sy - cell / 2, cell, cell)
+  }
+
+  const spriteSize = cell * 0.86
 
   for (const t of tiles) {
     const { sx, sy } = worldToScreen(cam, viewportW, viewportH, t.cx + 0.5, t.cy + 0.5)
-    // Cull tiles fully outside the viewport (+1 cell margin).
     if (sx < -cell || sx > viewportW + cell || sy < -cell || sy > viewportH + cell) {
       continue
     }
 
     const bitmap = sprites.get(t.emoji)
+
+    if (t.kind === 'belt') {
+      // Belts show their facing by rotating the arrow sprite itself.
+      if (bitmap) {
+        ctx.save()
+        ctx.translate(sx, sy)
+        ctx.rotate(dirAngle(t.dir))
+        ctx.drawImage(bitmap, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
+        ctx.restore()
+      } else {
+        drawPlaceholder(ctx, sx, sy, spriteSize)
+      }
+      continue
+    }
+
     if (bitmap) {
       ctx.drawImage(bitmap, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize)
     } else {
-      // Placeholder while the sprite rasterizes.
-      ctx.fillStyle = 'rgba(255,255,255,0.08)'
-      ctx.fillRect(sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize)
+      drawPlaceholder(ctx, sx, sy, spriteSize)
     }
+    // Non-belt machines get a chevron on the output edge to show orientation.
+    drawChevron(ctx, sx, sy, cell, t.dir)
   }
+}
+
+function drawPlaceholder(ctx: CanvasRenderingContext2D, sx: number, sy: number, size: number): void {
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'
+  ctx.fillRect(sx - size / 2, sy - size / 2, size, size)
+}
+
+/** Small filled triangle at the output edge of a cell, pointing outward. */
+function drawChevron(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  cell: number,
+  dir: Dir,
+): void {
+  const { dx, dy } = dirDelta(dir)
+  const edge = cell * 0.44 // distance from centre to just inside the edge
+  const cxp = sx + dx * edge
+  const cyp = sy + dy * edge
+  // Perpendicular unit vector for the triangle base.
+  const px = -dy
+  const py = dx
+  const tip = cell * 0.1
+  const half = cell * 0.09
+
+  ctx.fillStyle = ACCENT
+  ctx.beginPath()
+  ctx.moveTo(cxp + dx * tip, cyp + dy * tip) // tip pointing outward
+  ctx.lineTo(cxp + px * half, cyp + py * half)
+  ctx.lineTo(cxp - px * half, cyp - py * half)
+  ctx.closePath()
+  ctx.fill()
 }
 
 /** Draws grid lines aligned to world cell boundaries across the viewport. */

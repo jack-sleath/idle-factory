@@ -40,10 +40,64 @@
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: none; /* we handle pan gestures ourselves */
-  cursor: grab;
+  touch-action: none; /* we handle pan/pinch gestures ourselves */
+  cursor: crosshair;
 }
 
-.game-canvas:active {
-  cursor: grabbing;
+.palette {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  padding: 8px 10px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  background: var(--chrome);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.palette__group {
+  display: flex;
+  gap: 6px;
+}
+
+.palette__group--actions {
+  margin-left: auto;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.palette__btn {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 58px;
+  min-height: 58px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.palette__btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.palette__btn.is-active {
+  border-color: var(--accent);
+  background: rgba(240, 180, 41, 0.16);
+}
+
+.palette__label {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.8;
+  white-space: nowrap;
 }

@@ -39,10 +39,10 @@
 - Debounced autosave to `localStorage`; persist state + `savedAt` on `visibilitychange → hidden`; restore on load.
 
 **Done when:**
-- [ ] You can pan/zoom the world on touch.
-- [ ] Every machine kind can be placed, rotated (all machines), and deleted; orientation shows via the correct sprite.
-- [ ] A new game starts with the pre-placed ore gatherer → conveyor → storage.
-- [ ] Reloading restores the exact layout.
+- [x] You can pan/zoom the world on touch.
+- [x] Every machine kind can be placed, rotated (all machines), and deleted; orientation shows via the correct sprite.
+- [x] A new game starts with the pre-placed ore gatherer → conveyor → storage.
+- [x] Reloading restores the exact layout.
 
 ---
 

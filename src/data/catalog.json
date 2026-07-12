@@ -1,0 +1,75 @@
+[
+  {
+    "id": "ore-gatherer-basic",
+    "kind": "spawner",
+    "name": "Ore Gatherer",
+    "emoji": "⛏️",
+    "cost": 25,
+    "freeIfNonePlaced": true,
+    "defaultDir": "E",
+    "outputItem": "ore",
+    "rateTicks": 4
+  },
+  {
+    "id": "belt-basic",
+    "kind": "belt",
+    "name": "Conveyor",
+    "emoji": "➡️",
+    "cost": 5,
+    "freeIfNonePlaced": true,
+    "defaultDir": "E"
+  },
+  {
+    "id": "storage-basic",
+    "kind": "storage",
+    "name": "Storage",
+    "emoji": "📦",
+    "cost": 30,
+    "freeIfNonePlaced": true,
+    "defaultDir": "E"
+  },
+  {
+    "id": "seller-basic",
+    "kind": "seller",
+    "name": "Seller",
+    "emoji": "💰",
+    "cost": 50,
+    "defaultDir": "E"
+  },
+  {
+    "id": "processor-basic",
+    "kind": "processor",
+    "name": "Processor",
+    "emoji": "⚙️",
+    "cost": 60,
+    "defaultDir": "E"
+  },
+  {
+    "id": "combiner-basic",
+    "kind": "combiner",
+    "name": "Combiner",
+    "emoji": "🔀",
+    "cost": 120,
+    "defaultDir": "E"
+  },
+  {
+    "id": "cow",
+    "kind": "spawner",
+    "name": "Cow",
+    "emoji": "🐄",
+    "cost": 100,
+    "defaultDir": "E",
+    "outputItem": "milk",
+    "rateTicks": 6
+  },
+  {
+    "id": "deep-miner",
+    "kind": "spawner",
+    "name": "Deep Miner",
+    "emoji": "⚒️",
+    "cost": 300,
+    "defaultDir": "E",
+    "outputItem": "gem",
+    "rateTicks": 12
+  }
+]
