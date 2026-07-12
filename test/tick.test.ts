@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { step, type MachineBuffer, type SimState } from '../src/game/tick'
+import { step, type MachineBuffer, type SimState, type StorageState } from '../src/game/tick'
 import { cellKey } from '../src/game/world'
 import type { Dir, Machine, MachineKind } from '../src/game/types'
 
@@ -10,6 +10,8 @@ const belt = (x: number, y: number, dir: Dir) => machine('belt', x, y, dir, 'bel
 const spawner = (x: number, y: number, dir: Dir) => machine('spawner', x, y, dir, 'ore-gatherer-basic') // ore, rateTicks 4
 const processor = (x: number, y: number, dir: Dir) => machine('processor', x, y, dir, 'processor-basic')
 const combiner = (x: number, y: number, dir: Dir) => machine('combiner', x, y, dir, 'combiner-basic')
+const storage = (x: number, y: number, dir: Dir) => machine('storage', x, y, dir, 'storage-basic') // capacity 500
+const seller = (x: number, y: number, dir: Dir) => machine('seller', x, y, dir, 'seller-basic')
 
 function worldOf(...ms: Machine[]): Map<string, Machine> {
   const w = new Map<string, Machine>()
@@ -26,19 +28,36 @@ function buffersOf(entries: [number, number, MachineBuffer][]): Map<string, Mach
   for (const [x, y, b] of entries) m.set(cellKey(x, y), b)
   return m
 }
+function storesOf(entries: [number, number, StorageState][]): Map<string, StorageState> {
+  const m = new Map<string, StorageState>()
+  for (const [x, y, st] of entries) m.set(cellKey(x, y), st)
+  return m
+}
 function mkState(
   machines: Map<string, Machine>,
   items: Map<string, string>,
   tick: number,
   buffers: Map<string, MachineBuffer> = new Map(),
+  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online'>> = {},
 ): SimState {
-  return { machines, items, buffers, tick }
+  return {
+    machines,
+    items,
+    buffers,
+    stores: extra.stores ?? new Map(),
+    money: extra.money ?? 0,
+    online: extra.online ?? true,
+    tick,
+  }
 }
 function itemAt(s: SimState, x: number, y: number): string | undefined {
   return s.items.get(cellKey(x, y))
 }
 function bufAt(s: SimState, x: number, y: number): MachineBuffer | undefined {
   return s.buffers.get(cellKey(x, y))
+}
+function storeAt(s: SimState, x: number, y: number): StorageState | undefined {
+  return s.stores.get(cellKey(x, y))
 }
 
 describe('belt movement', () => {
@@ -212,5 +231,55 @@ describe('combiners (M4)', () => {
     expect(bufAt(s, 1, 1)?.in.filter(Boolean)).toEqual(['brick'])
     expect(bufAt(s, 1, 1)?.out).toBeNull()
     expect(itemAt(s, 2, 1)).toBeUndefined() // nothing emitted yet
+  })
+})
+
+describe('storage (M5)', () => {
+  it('locks onto the first item type it receives', () => {
+    const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'milk']]), 0))
+    expect(storeAt(s, 1, 0)).toEqual({ item: 'milk', count: 1 })
+    expect(s.items.size).toBe(0) // pulled off the belt into storage
+  })
+
+  it('accumulates further items of its locked type', () => {
+    const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
+    const stores = storesOf([[1, 0, { item: 'ore', count: 5 }]])
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0, new Map(), { stores }))
+    expect(storeAt(s, 1, 0)).toEqual({ item: 'ore', count: 6 })
+    expect(s.items.size).toBe(0)
+  })
+
+  it('rejects a non-matching item, which then backs up on the belt', () => {
+    const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
+    const stores = storesOf([[1, 0, { item: 'ore', count: 1 }]])
+    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { stores }))
+    expect(storeAt(s, 1, 0)).toEqual({ item: 'ore', count: 1 }) // unchanged
+    expect(itemAt(s, 0, 0)).toBe('gem') // rejected → held on the belt
+  })
+
+  it('stops accepting once full (capacity 500), backing up the belt', () => {
+    const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
+    const stores = storesOf([[1, 0, { item: 'ore', count: 500 }]])
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0, new Map(), { stores }))
+    expect(storeAt(s, 1, 0)?.count).toBe(500) // no overflow
+    expect(itemAt(s, 0, 0)).toBe('ore') // held on the belt
+  })
+})
+
+describe('sellers (M5)', () => {
+  it('credits money at the item base price for each item consumed while online', () => {
+    // belt(gem) → seller; gem base price is 10.
+    const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { money: 100 }))
+    expect(s.money).toBe(110)
+    expect(s.items.size).toBe(0) // consumed by the seller
+  })
+
+  it('sells nothing while offline; the item backs up (buffering added in M9)', () => {
+    const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { money: 100, online: false }))
+    expect(s.money).toBe(100) // no credit offline
+    expect(itemAt(s, 0, 0)).toBe('gem') // inert seller → held on the belt
   })
 })

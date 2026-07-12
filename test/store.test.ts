@@ -9,6 +9,11 @@ function resetToEmptyWorld() {
   useGameStore.setState({
     world: new Map(),
     chunks: new Map(),
+    items: new Map(),
+    buffers: new Map(),
+    stores: new Map(),
+    money: 0,
+    online: true,
     selected: null,
     worldRev: 0,
     camera: { ...config.camera },
@@ -102,6 +107,30 @@ describe('tapCell dispatches per active tool', () => {
     store.setTool({ kind: 'select' })
     store.tapCell(8, 8)
     expect(useGameStore.getState().world.get(cellKey(8, 8))).toBe(before)
+  })
+})
+
+describe('sell all (M5)', () => {
+  beforeEach(resetToEmptyWorld)
+
+  it('banks a storage stockpile at base price and empties it', () => {
+    const store = useGameStore.getState()
+    store.place(3, 0, 'storage-basic')
+    // Seed the storage with 10 gems (base price 10 each → 100).
+    useGameStore.setState({ stores: new Map([[cellKey(3, 0), { item: 'gem', count: 10 }]]) })
+
+    useGameStore.getState().sellAll(3, 0)
+    expect(useGameStore.getState().money).toBe(100)
+    expect(useGameStore.getState().stores.get(cellKey(3, 0))).toBeUndefined()
+  })
+
+  it('does nothing for a non-storage cell or an empty storage', () => {
+    const store = useGameStore.getState()
+    store.place(4, 0, 'belt-basic')
+    store.sellAll(4, 0) // not a storage
+    store.place(5, 0, 'storage-basic')
+    store.sellAll(5, 0) // storage but empty
+    expect(useGameStore.getState().money).toBe(0)
   })
 })
 
