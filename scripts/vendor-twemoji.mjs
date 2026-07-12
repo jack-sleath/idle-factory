@@ -41,16 +41,21 @@ const CDN_BASES = [
   `https://cdn.jsdelivr.net/gh/twitter/twemoji@${TWEMOJI_VERSION}/assets/svg`,
 ]
 
-// The emoji currently rendered anywhere in the app (world sprites + UI chrome).
+// Emoji are derived from the data (every item + catalog machine) so this stays
+// in sync as content grows, unioned with the fixed UI-chrome emoji that don't
+// live in the data files (HUD title, palette action tools, panel buttons).
+const dataDir = path.join(process.cwd(), 'src', 'data')
+const items = JSON.parse(fs.readFileSync(path.join(dataDir, 'items.json'), 'utf8'))
+const catalog = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'))
+
+const UI_CHROME = ['🏭', '🔍', '🔄', '❌', '📈', '💾', '❓']
+
 const EMOJI = [
-  // M1 demo / HUD
-  '⛏️', '➡️', '📦', '🪨', '🐄', '🥛', '🏭',
-  // M2 machines (catalog build tools)
-  '💰', '⚙️', '🔀', '⚒️',
-  // M2 action tools (palette chrome)
-  '🔍', '🔄', '❌',
-  // M3 spawnable item (deep miner output; ore/milk already vendored)
-  '💎',
+  ...new Set([
+    ...items.map((i) => i.emoji),
+    ...catalog.map((c) => c.emoji),
+    ...UI_CHROME,
+  ]),
 ]
 
 async function fetchSvg(cp) {

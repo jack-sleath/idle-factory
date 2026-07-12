@@ -1,9 +1,41 @@
 [
   { "id": "ore", "name": "Ore", "emoji": "🪨", "startingValue": 1, "minPrice": 0.1, "maxPrice": 50 },
+  { "id": "silver-ore", "name": "Silver Ore", "emoji": "⚪", "startingValue": 3, "minPrice": 0.3, "maxPrice": 150 },
+  { "id": "gold-ore", "name": "Gold Ore", "emoji": "🟡", "startingValue": 6, "minPrice": 0.6, "maxPrice": 300 },
+
+  { "id": "bar", "name": "Bar", "emoji": "🔩", "startingValue": 4, "minPrice": 0.4, "maxPrice": 200 },
+  { "id": "silver-bar", "name": "Silver Bar", "emoji": "⬜", "startingValue": 10, "minPrice": 1, "maxPrice": 500 },
+  { "id": "gold-bar", "name": "Gold Bar", "emoji": "🟨", "startingValue": 20, "minPrice": 2, "maxPrice": 1000 },
+
+  { "id": "ring", "name": "Ring", "emoji": "💍", "startingValue": 12, "minPrice": 1, "maxPrice": 600 },
+  { "id": "silver-ring", "name": "Silver Ring", "emoji": "💍", "startingValue": 26, "minPrice": 2, "maxPrice": 1300 },
+  { "id": "gold-ring", "name": "Gold Ring", "emoji": "💍", "startingValue": 48, "minPrice": 5, "maxPrice": 2400 },
+
+  { "id": "sapphire", "name": "Sapphire", "emoji": "🔷", "startingValue": 8, "minPrice": 0.8, "maxPrice": 400 },
+  { "id": "emerald", "name": "Emerald", "emoji": "🟢", "startingValue": 14, "minPrice": 1, "maxPrice": 700 },
+  { "id": "ruby", "name": "Ruby", "emoji": "🔴", "startingValue": 22, "minPrice": 2, "maxPrice": 1100 },
+  { "id": "diamond", "name": "Diamond", "emoji": "💎", "startingValue": 50, "minPrice": 5, "maxPrice": 2500 },
+
   { "id": "milk", "name": "Milk", "emoji": "🥛", "startingValue": 2, "minPrice": 0.2, "maxPrice": 80 },
-  { "id": "gem", "name": "Gem", "emoji": "💎", "startingValue": 10, "minPrice": 1, "maxPrice": 500 },
-  { "id": "brick", "name": "Brick", "emoji": "🧱", "startingValue": 4, "minPrice": 0.5, "maxPrice": 200 },
   { "id": "cheese", "name": "Cheese", "emoji": "🧀", "startingValue": 6, "minPrice": 0.5, "maxPrice": 250 },
-  { "id": "ring", "name": "Ring", "emoji": "💍", "startingValue": 40, "minPrice": 5, "maxPrice": 2000 },
+
+  { "id": "silver-sapphire-ring", "name": "Silver Sapphire Ring", "emoji": "💍", "startingValue": 55, "minPrice": 5, "maxPrice": 2750 },
+  { "id": "silver-emerald-ring", "name": "Silver Emerald Ring", "emoji": "💍", "startingValue": 70, "minPrice": 7, "maxPrice": 3500 },
+  { "id": "silver-ruby-ring", "name": "Silver Ruby Ring", "emoji": "💍", "startingValue": 85, "minPrice": 8, "maxPrice": 4250 },
+  { "id": "silver-diamond-ring", "name": "Silver Diamond Ring", "emoji": "💍", "startingValue": 130, "minPrice": 13, "maxPrice": 6500 },
+  { "id": "gold-sapphire-ring", "name": "Gold Sapphire Ring", "emoji": "💍", "startingValue": 95, "minPrice": 9, "maxPrice": 4750 },
+  { "id": "gold-emerald-ring", "name": "Gold Emerald Ring", "emoji": "💍", "startingValue": 115, "minPrice": 11, "maxPrice": 5750 },
+  { "id": "gold-ruby-ring", "name": "Gold Ruby Ring", "emoji": "💍", "startingValue": 140, "minPrice": 14, "maxPrice": 7000 },
+  { "id": "gold-diamond-ring", "name": "Gold Diamond Ring", "emoji": "💍", "startingValue": 200, "minPrice": 20, "maxPrice": 10000 },
+
+  { "id": "silver-sapphire-amulet", "name": "Silver Sapphire Amulet", "emoji": "🧿", "startingValue": 40, "minPrice": 4, "maxPrice": 2000 },
+  { "id": "silver-emerald-amulet", "name": "Silver Emerald Amulet", "emoji": "🧿", "startingValue": 55, "minPrice": 5, "maxPrice": 2750 },
+  { "id": "silver-ruby-amulet", "name": "Silver Ruby Amulet", "emoji": "🧿", "startingValue": 70, "minPrice": 7, "maxPrice": 3500 },
+  { "id": "silver-diamond-amulet", "name": "Silver Diamond Amulet", "emoji": "🧿", "startingValue": 115, "minPrice": 11, "maxPrice": 5750 },
+  { "id": "gold-sapphire-amulet", "name": "Gold Sapphire Amulet", "emoji": "🧿", "startingValue": 65, "minPrice": 6, "maxPrice": 3250 },
+  { "id": "gold-emerald-amulet", "name": "Gold Emerald Amulet", "emoji": "🧿", "startingValue": 85, "minPrice": 8, "maxPrice": 4250 },
+  { "id": "gold-ruby-amulet", "name": "Gold Ruby Amulet", "emoji": "🧿", "startingValue": 110, "minPrice": 11, "maxPrice": 5500 },
+  { "id": "gold-diamond-amulet", "name": "Gold Diamond Amulet", "emoji": "🧿", "startingValue": 175, "minPrice": 17, "maxPrice": 8750 },
+
   { "id": "junk", "name": "Junk", "emoji": "🗑️", "startingValue": 0.1, "minPrice": 0.01, "maxPrice": 5 }
 ]

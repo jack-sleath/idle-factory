@@ -64,13 +64,63 @@
     "rateTicks": 6
   },
   {
-    "id": "deep-miner",
+    "id": "silver-mine",
     "kind": "spawner",
-    "name": "Deep Miner",
-    "emoji": "⚒️",
-    "cost": 300,
+    "name": "Silver Mine",
+    "emoji": "⚪",
+    "cost": 80,
     "defaultDir": "E",
-    "outputItem": "gem",
-    "rateTicks": 12
+    "outputItem": "silver-ore",
+    "rateTicks": 8
+  },
+  {
+    "id": "gold-mine",
+    "kind": "spawner",
+    "name": "Gold Mine",
+    "emoji": "🟡",
+    "cost": 150,
+    "defaultDir": "E",
+    "outputItem": "gold-ore",
+    "rateTicks": 10
+  },
+  {
+    "id": "sapphire-deposit",
+    "kind": "spawner",
+    "name": "Sapphire Deposit",
+    "emoji": "🔷",
+    "cost": 120,
+    "defaultDir": "E",
+    "outputItem": "sapphire",
+    "rateTicks": 14
+  },
+  {
+    "id": "emerald-deposit",
+    "kind": "spawner",
+    "name": "Emerald Deposit",
+    "emoji": "🟢",
+    "cost": 200,
+    "defaultDir": "E",
+    "outputItem": "emerald",
+    "rateTicks": 16
+  },
+  {
+    "id": "ruby-deposit",
+    "kind": "spawner",
+    "name": "Ruby Deposit",
+    "emoji": "🔴",
+    "cost": 350,
+    "defaultDir": "E",
+    "outputItem": "ruby",
+    "rateTicks": 20
+  },
+  {
+    "id": "diamond-deposit",
+    "kind": "spawner",
+    "name": "Diamond Deposit",
+    "emoji": "💎",
+    "cost": 600,
+    "defaultDir": "E",
+    "outputItem": "diamond",
+    "rateTicks": 28
   }
 ]

@@ -43,7 +43,7 @@ export default function App() {
     <div className="app">
       <header className="hud">
         <span className="hud__title">
-          <Emoji emoji="🏭" size={22} label="factory" /> Idle Factory
+          <Emoji emoji="🏭" size={22} label="factory" /> Auto-Exportica
         </span>
         <span className="hud__hint">Pick a tool, then tap a cell</span>
         <div className="hud__right">

@@ -1,10 +1,11 @@
+import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { ITEMS } from '../data'
 import { formatMoney } from '../lib/format'
 import { Emoji } from './Emoji'
 
-const SPARK_W = 88
-const SPARK_H = 24
+const SPARK_W = 56
+const SPARK_H = 20
 const SPARK_PAD = 3
 
 /** A tiny inline-SVG line chart of an item's recent prices. */
@@ -35,9 +36,17 @@ function Sparkline({ values, crashed }: { values: number[]; crashed: boolean }) 
   )
 }
 
-/** The stock-market panel: live price and a last-10 sparkline for every item. */
+/**
+ * The stock-market panel: live price and a last-10 sparkline for every item.
+ * The search box matches anywhere in the name, so "ruby" surfaces the stone and
+ * every ruby ring and amulet.
+ */
 export function MarketPanel({ onClose }: { onClose: () => void }) {
   const market = useGameStore((s) => s.market)
+  const [query, setQuery] = useState('')
+
+  const q = query.trim().toLowerCase()
+  const shown = q ? ITEMS.filter((it) => it.name.toLowerCase().includes(q)) : ITEMS
 
   return (
     <aside className="panel panel--market" aria-label="Market">
@@ -49,14 +58,23 @@ export function MarketPanel({ onClose }: { onClose: () => void }) {
           ✕
         </button>
       </header>
+      <input
+        type="search"
+        className="market__search"
+        placeholder="Search items…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        aria-label="Search items"
+      />
       <ul className="market__list">
-        {ITEMS.map((it) => {
+        {shown.map((it) => {
           const m = market.items[it.id]
           if (!m) return null
           return (
             <li key={it.id} className="market__row">
-              <span className="market__item">
-                <Emoji emoji={it.emoji} size={18} label={it.name} />
+              <Emoji emoji={it.emoji} size={16} label={it.name} />
+              <span className="market__name" title={it.name}>
+                {it.name}
               </span>
               <span className={`market__price${m.crashed ? ' is-crashed' : ''}`}>
                 {formatMoney(m.price)}
@@ -70,6 +88,7 @@ export function MarketPanel({ onClose }: { onClose: () => void }) {
             </li>
           )
         })}
+        {shown.length === 0 && <li className="market__empty">No items match “{query}”.</li>}
       </ul>
     </aside>
   )

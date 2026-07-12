@@ -192,7 +192,26 @@
 
 ---
 
-## Milestone 12 (deferred) — Google Drive sync
+## Milestone-power-scaling — Scaling model & admin tuning screen
+**Goal:** Measure how long a fresh factory takes to reach full automation, and tune the economy from inside the app.
+
+**Tasks:**
+- Analytical scaling model (headless, pure, "flavour A"). From `items` / `recipes` / `catalog`, derive each item's production chain (the base spawners + processor/combiner steps + a seller it needs), its build cost (via `game/economy.ts` `effectiveCost`), and its steady-state throughput (gated by the slowest spawner in its tree; a combiner is gated by the slower of its two feeds). Run a build-policy loop that accrues income and buys the next machine when affordable, until every item type has a live sell chain. Return: ticks and wall-clock to full automation, the per-item unlock timeline, and the money-over-time curve. The model takes the economy values as an argument, so overrides can be fed in.
+  - Build policy: ROI-greedy (buy the affordable chain with the best income-per-cost next), with cheapest-next available for comparison. The reported number is always relative to the chosen policy.
+  - Fixed base prices for a reproducible baseline (market fluctuation off); an optional Monte-Carlo pass with the market on can come later.
+- CLI report: a `scripts/scaling-sim.mjs` (or a vitest report) that prints the metrics plus a sensitivity table (bump each cost / rate / price by ±X% and show the effect on time-to-full-automation) for sweeping from the terminal.
+- Admin tuning screen (dev-only, never in the player UI). Gate it behind a route or key toggle (e.g. `#admin`). Editable controls for the tunables (item `startingValue` / `minPrice` / `maxPrice`, spawner `cost` + `rateTicks`, machine `cost`). Recompute the model live on every change and show the results: time-to-full-automation, the unlock timeline, the income curve, and the sensitivity table.
+- Overrides are in-memory only and never mutate the JSON. An "Export tuned values" action outputs the changed values as JSON to paste back into the data files.
+- (Optional / stretch) Apply the overrides to the live game session for hands-on playtesting.
+
+**Done when:**
+- [ ] The model reports time-to-full-automation (plus the unlock timeline and money curve) for the current economy from a fresh $0 start under a defined build policy.
+- [ ] The admin screen lets you change costs / rates / prices and see the scaling metrics update live, without appearing in the shipped player UI.
+- [ ] Tuned values can be exported as JSON for pasting back into the data files.
+
+---
+
+## Milestone-drive (parked) — Google Drive sync
 **Goal:** Optional cloud save/load via Google Drive.
 
 **Tasks:**

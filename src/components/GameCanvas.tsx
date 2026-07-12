@@ -67,7 +67,7 @@ export function GameCanvas() {
 
     const loop = () => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, buffers, selected } = useGameStore.getState()
+      const { camera, world, chunks, items, buffers, stores, selected } = useGameStore.getState()
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
@@ -101,6 +101,16 @@ export function GameCanvas() {
         const held = b.out ?? b.in.find((slot) => slot != null) ?? undefined
         if (!held) continue
         const emoji = ITEMS_BY_ID[held]?.emoji
+        if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
+      }
+
+      // Storage shows the item type it's holding, so a filling store doesn't
+      // look like items are vanishing into it (the exact count is in its panel).
+      for (const [key, st] of stores) {
+        if (!st.item || st.count <= 0) continue
+        const { x, y } = parseCellKey(key)
+        if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
+        const emoji = ITEMS_BY_ID[st.item]?.emoji
         if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
       }
 

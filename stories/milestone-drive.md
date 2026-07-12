@@ -1,9 +1,9 @@
-# Title: Google Drive Sync (Deferred)
+# Title: Google Drive Sync (Parked)
 
 <details>
 <summary>Original Spec</summary>
 
-## Milestone 12 (deferred) — Google Drive sync
+## Milestone-drive (parked) — Google Drive sync
 **Goal:** Optional cloud save/load via Google Drive.
 
 **Tasks:**
@@ -16,7 +16,7 @@
 </details>
 
 ## Technical Notes
-- This milestone is **deferred** (post-MVP / out of scope for the core game).
+- This milestone is **parked** (post-MVP / out of scope for the core game).
 - OAuth via Google Identity Services; the Client ID is a config value.
 - Save/load the JSON save to the Drive `appDataFolder`.
 - Connect/disconnect UI to manage the Drive link.
