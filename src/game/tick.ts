@@ -47,6 +47,8 @@ export interface SimState {
   stores: Map<string, StorageState>
   /** Bank balance; auto-sellers credit it while online (M5). */
   money: number
+  /** Live sale price per item id (from the market, M7); base price if absent. */
+  prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
   online: boolean
   /** Monotonic tick counter. */
@@ -90,7 +92,7 @@ function combine(a: string, b: string): string {
  */
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
-  const { machines, items, buffers, stores, online } = state
+  const { machines, items, buffers, stores, prices, online } = state
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
 
@@ -307,14 +309,14 @@ export function step(state: SimState): SimState {
       }
       case 'seller': {
         const incoming = arrivingItem(m.x, m.y)
-        // Online: liquidate immediately at the current price. Offline buffering
-        // (so nothing is lost while away) arrives in M9.
-        if (incoming !== undefined && online) money += basePrice(incoming)
+        // Online: liquidate immediately at the live market price (base price if
+        // the market has no entry). Offline buffering (M9) keeps items instead.
+        if (incoming !== undefined && online) money += prices[incoming] ?? basePrice(incoming)
         break
       }
       // spawner: emits into neighbours but stores nothing itself.
     }
   }
 
-  return { machines, items: nextItems, buffers: nextBuffers, stores: nextStores, money, online, tick }
+  return { machines, items: nextItems, buffers: nextBuffers, stores: nextStores, money, prices, online, tick }
 }

@@ -38,7 +38,7 @@ function mkState(
   items: Map<string, string>,
   tick: number,
   buffers: Map<string, MachineBuffer> = new Map(),
-  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online'>> = {},
+  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online' | 'prices'>> = {},
 ): SimState {
   return {
     machines,
@@ -46,6 +46,7 @@ function mkState(
     buffers,
     stores: extra.stores ?? new Map(),
     money: extra.money ?? 0,
+    prices: extra.prices ?? {},
     online: extra.online ?? true,
     tick,
   }
@@ -281,5 +282,12 @@ describe('sellers (M5)', () => {
     const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { money: 100, online: false }))
     expect(s.money).toBe(100) // no credit offline
     expect(itemAt(s, 0, 0)).toBe('gem') // inert seller → held on the belt
+  })
+
+  it('credits money at the live market price when one is supplied (M7)', () => {
+    const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
+    // gem base price is 10; the live price of 25 must win.
+    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { prices: { gem: 25 } }))
+    expect(s.money).toBe(25)
   })
 })

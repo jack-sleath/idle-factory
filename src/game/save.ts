@@ -1,12 +1,14 @@
 import type { Camera } from '../render/camera'
 import type { Machine } from './types'
+import type { Market } from './market'
 import { config } from '../data/config'
 
 // Versioned save schema + localStorage read/write. v1 (M2) held layout + camera;
-// v2 (M5) adds the bank balance and per-storage contents. In-transit belt items
-// and processor/combiner buffers are deliberately not persisted (they are cheap,
-// transient, and cleared on offline catch-up in M9). Parsing tolerates older
-// saves by filling new fields with defaults, so a v1 save still loads.
+// v2 (M5) added the bank balance and per-storage contents; v3 (M7) adds market
+// state. In-transit belt items and processor/combiner buffers are deliberately
+// not persisted (they are cheap, transient, and cleared on offline catch-up in
+// M9). Parsing tolerates older saves by filling new fields with defaults (money
+// 0, no stores, no market), so v1/v2 saves still load.
 
 export const SAVE_KEY = 'idle-factory/save'
 
@@ -24,6 +26,8 @@ export interface GameSave {
   machines: Machine[]
   money: number
   stores: StoredStorage[]
+  /** Persisted market; null for pre-M7 saves (a fresh market is seeded then). */
+  market: Market | null
 }
 
 export function makeSave(
@@ -32,8 +36,16 @@ export function makeSave(
   savedAt: number,
   money = 0,
   stores: StoredStorage[] = [],
+  market: Market | null = null,
 ): GameSave {
-  return { version: config.saveVersion, savedAt, camera, machines, money, stores }
+  return { version: config.saveVersion, savedAt, camera, machines, money, stores, market }
+}
+
+/** Loose runtime check that a parsed value looks like a Market. */
+function isMarket(value: unknown): value is Market {
+  if (typeof value !== 'object' || value === null) return false
+  const m = value as Record<string, unknown>
+  return typeof m.lastUpdate === 'number' && typeof m.items === 'object' && m.items !== null
 }
 
 /** Parse and lightly validate a persisted save; returns null if unusable. */
@@ -57,6 +69,7 @@ export function parseSave(raw: string): GameSave | null {
     machines: obj.machines as Machine[],
     money: typeof obj.money === 'number' ? obj.money : 0,
     stores: Array.isArray(obj.stores) ? (obj.stores as StoredStorage[]) : [],
+    market: isMarket(obj.market) ? obj.market : null,
   }
 }
 

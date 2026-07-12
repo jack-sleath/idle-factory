@@ -123,11 +123,11 @@
 - Sellers and storage **Sell All** use the live price.
 
 **Done when:**
-- [ ] Each interval multiplies prices by a neutral factor (verified: no systematic up/down drift over many steps).
-- [ ] Hitting `minPrice` or `maxPrice` resets that item to its starting value.
-- [ ] The market panel shows a graph of each item's last 10 values.
-- [ ] Market state (including histories) persists across reload and is included in export/import.
-- [ ] Sellers and Sell-All use the live price.
+- [x] Each interval multiplies prices by a neutral factor (verified: no systematic up/down drift over many steps).
+- [x] Hitting `minPrice` or `maxPrice` resets that item to its starting value.
+- [x] The market panel shows a graph of each item's last 10 values.
+- [x] Market state (including histories) persists across reload and is included in export/import.
+- [x] Sellers and Sell-All use the live price.
 
 ---
 
