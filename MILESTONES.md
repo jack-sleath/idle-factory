@@ -105,10 +105,10 @@
 - Confirm the starter kit (seeded in M2) plus free basics guarantee recovery from a fully-deleted world.
 
 **Done when:**
-- [ ] Placing a priced machine deducts its cost; an unaffordable machine can't be placed.
-- [ ] The first basic ore gatherer, conveyor, and storage (when none of that basic is placed) are free; a second of each costs money.
-- [ ] After deleting everything with $0, the player can rebuild an earning setup from the free-first basics.
-- [ ] Buying a spawner variant (e.g. cow) produces its different item.
+- [x] Placing a priced machine deducts its cost; an unaffordable machine can't be placed.
+- [x] The first basic ore gatherer, conveyor, and storage (when none of that basic is placed) are free; a second of each costs money.
+- [x] After deleting everything with $0, the player can rebuild an earning setup from the free-first basics.
+- [x] Buying a spawner variant (e.g. cow) produces its different item.
 
 ---
 
