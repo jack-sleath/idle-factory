@@ -120,8 +120,8 @@ describe('sell all (M5)', () => {
   it('banks a storage stockpile at base price and empties it', () => {
     const store = useGameStore.getState()
     store.place(3, 0, 'storage-basic')
-    // Seed the storage with 10 gems (base price 10 each → 100).
-    useGameStore.setState({ stores: new Map([[cellKey(3, 0), { item: 'gem', count: 10 }]]) })
+    // Seed the storage with 2 diamonds (base price 50 each → 100).
+    useGameStore.setState({ stores: new Map([[cellKey(3, 0), { item: 'diamond', count: 2 }]]) })
 
     useGameStore.getState().sellAll(3, 0)
     expect(useGameStore.getState().money).toBe(100)

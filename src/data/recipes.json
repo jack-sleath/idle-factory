@@ -1,9 +1,30 @@
 {
   "processor": [
-    { "in": "ore", "out": "brick" },
+    { "in": "ore", "out": "bar" },
+    { "in": "silver-ore", "out": "silver-bar" },
+    { "in": "gold-ore", "out": "gold-bar" },
+    { "in": "bar", "out": "ring" },
+    { "in": "silver-bar", "out": "silver-ring" },
+    { "in": "gold-bar", "out": "gold-ring" },
     { "in": "milk", "out": "cheese" }
   ],
   "combiner": [
-    { "a": "brick", "b": "gem", "out": "ring" }
+    { "a": "silver-ring", "b": "sapphire", "out": "silver-sapphire-ring" },
+    { "a": "silver-ring", "b": "emerald", "out": "silver-emerald-ring" },
+    { "a": "silver-ring", "b": "ruby", "out": "silver-ruby-ring" },
+    { "a": "silver-ring", "b": "diamond", "out": "silver-diamond-ring" },
+    { "a": "gold-ring", "b": "sapphire", "out": "gold-sapphire-ring" },
+    { "a": "gold-ring", "b": "emerald", "out": "gold-emerald-ring" },
+    { "a": "gold-ring", "b": "ruby", "out": "gold-ruby-ring" },
+    { "a": "gold-ring", "b": "diamond", "out": "gold-diamond-ring" },
+
+    { "a": "silver-bar", "b": "sapphire", "out": "silver-sapphire-amulet" },
+    { "a": "silver-bar", "b": "emerald", "out": "silver-emerald-amulet" },
+    { "a": "silver-bar", "b": "ruby", "out": "silver-ruby-amulet" },
+    { "a": "silver-bar", "b": "diamond", "out": "silver-diamond-amulet" },
+    { "a": "gold-bar", "b": "sapphire", "out": "gold-sapphire-amulet" },
+    { "a": "gold-bar", "b": "emerald", "out": "gold-emerald-amulet" },
+    { "a": "gold-bar", "b": "ruby", "out": "gold-ruby-amulet" },
+    { "a": "gold-bar", "b": "diamond", "out": "gold-diamond-amulet" }
   ]
 }

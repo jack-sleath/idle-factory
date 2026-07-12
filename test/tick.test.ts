@@ -146,15 +146,15 @@ describe('spawners', () => {
   it('holds (does not emit or lose an item) when the output cell is blocked', () => {
     // 1,0 is occupied by an item that cannot move (2,0 has no belt).
     const machines = worldOf(spawner(0, 0, 'E'), belt(1, 0, 'E'))
-    const s = step(mkState(machines, itemsOf([[1, 0, 'gem']]), 3)) // would be due
-    expect(itemAt(s, 1, 0)).toBe('gem') // unchanged
+    const s = step(mkState(machines, itemsOf([[1, 0, 'diamond']]), 3)) // would be due
+    expect(itemAt(s, 1, 0)).toBe('diamond') // unchanged
     expect(s.items.size).toBe(1) // no extra item emitted
   })
 })
 
 describe('processors (M4)', () => {
   it('transforms an input item into its recipe output through the machine', () => {
-    // belt(ore) → processor(E) → belt.  Recipe: ore → brick.
+    // belt(ore) → processor(E) → belt.  Recipe: ore → bar.
     const machines = worldOf(belt(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'))
     let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
 
@@ -163,20 +163,20 @@ describe('processors (M4)', () => {
     expect(bufAt(s, 1, 0)?.in[0]).toBe('ore')
 
     s = step(s) // input transforms into the held output
-    expect(bufAt(s, 1, 0)?.out).toBe('brick')
+    expect(bufAt(s, 1, 0)?.out).toBe('bar')
 
     s = step(s) // output pushed onto the downstream belt
-    expect(itemAt(s, 2, 0)).toBe('brick')
+    expect(itemAt(s, 2, 0)).toBe('bar')
     expect(bufAt(s, 1, 0)).toBeUndefined() // machine emptied
   })
 
   it('holds its output when the downstream cell is blocked, losing nothing', () => {
-    // Processor holds a brick; its only exit belt is jammed (nothing beyond it).
+    // Processor holds a bar; its only exit belt is jammed (nothing beyond it).
     const machines = worldOf(processor(0, 0, 'E'), belt(1, 0, 'E'))
-    const buffers = buffersOf([[0, 0, { in: [null], out: 'brick' }]])
+    const buffers = buffersOf([[0, 0, { in: [null], out: 'bar' }]])
     const s = step(mkState(machines, itemsOf([[1, 0, 'ore']]), 0, buffers))
 
-    expect(bufAt(s, 0, 0)?.out).toBe('brick') // still held
+    expect(bufAt(s, 0, 0)?.out).toBe('bar') // still held
     expect(itemAt(s, 1, 0)).toBe('ore') // jam unchanged
     // No duplication or loss: exactly one buffered output and one belt item.
     expect(s.buffers.size).toBe(1)
@@ -184,9 +184,9 @@ describe('processors (M4)', () => {
   })
 
   it('turns an input with no matching recipe into junk', () => {
-    // gem has no processor recipe → junk fallback.
+    // diamond has no processor recipe → junk fallback.
     const machines = worldOf(belt(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'))
-    let s = mkState(machines, itemsOf([[0, 0, 'gem']]), 0)
+    let s = mkState(machines, itemsOf([[0, 0, 'diamond']]), 0)
     s = step(s)
     s = step(s)
     s = step(s)
@@ -195,7 +195,7 @@ describe('processors (M4)', () => {
 })
 
 describe('combiners (M4)', () => {
-  // An east-facing combiner takes inputs on its N and S sides; recipe brick+gem → ring.
+  // An east-facing combiner takes inputs on its N and S sides; recipe gold-ring + ruby → gold-ruby-ring.
   const layout = () =>
     worldOf(
       belt(1, 0, 'S'), // north side, pointing into the combiner
@@ -205,14 +205,14 @@ describe('combiners (M4)', () => {
     )
 
   it('combines two inputs into the recipe output regardless of which side each enters', () => {
-    for (const [north, south] of [['brick', 'gem'], ['gem', 'brick']] as const) {
+    for (const [north, south] of [['gold-ring', 'ruby'], ['ruby', 'gold-ring']] as const) {
       let s = mkState(layout(), itemsOf([[1, 0, north], [1, 2, south]]), 0)
       s = step(s) // both inputs pulled into their slots
-      expect(bufAt(s, 1, 1)?.in.filter(Boolean).sort()).toEqual(['brick', 'gem'])
+      expect(bufAt(s, 1, 1)?.in.filter(Boolean).sort()).toEqual(['gold-ring', 'ruby'])
       s = step(s) // pair combines into the held output
-      expect(bufAt(s, 1, 1)?.out).toBe('ring')
+      expect(bufAt(s, 1, 1)?.out).toBe('gold-ruby-ring')
       s = step(s) // output pushed downstream
-      expect(itemAt(s, 2, 1)).toBe('ring')
+      expect(itemAt(s, 2, 1)).toBe('gold-ruby-ring')
     }
   })
 
@@ -227,10 +227,10 @@ describe('combiners (M4)', () => {
 
   it('waits for both input sides before combining (single input is held, not lost)', () => {
     // Only the north side is fed; the combiner buffers it and waits.
-    let s = mkState(layout(), itemsOf([[1, 0, 'brick']]), 0)
+    let s = mkState(layout(), itemsOf([[1, 0, 'gold-ring']]), 0)
     s = step(s)
     s = step(s)
-    expect(bufAt(s, 1, 1)?.in.filter(Boolean)).toEqual(['brick'])
+    expect(bufAt(s, 1, 1)?.in.filter(Boolean)).toEqual(['gold-ring'])
     expect(bufAt(s, 1, 1)?.out).toBeNull()
     expect(itemAt(s, 2, 1)).toBeUndefined() // nothing emitted yet
   })
@@ -255,9 +255,9 @@ describe('storage (M5)', () => {
   it('rejects a non-matching item, which then backs up on the belt', () => {
     const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
     const stores = storesOf([[1, 0, { item: 'ore', count: 1 }]])
-    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { stores }))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { stores }))
     expect(storeAt(s, 1, 0)).toEqual({ item: 'ore', count: 1 }) // unchanged
-    expect(itemAt(s, 0, 0)).toBe('gem') // rejected → held on the belt
+    expect(itemAt(s, 0, 0)).toBe('diamond') // rejected → held on the belt
   })
 
   it('stops accepting once full (capacity 500), backing up the belt', () => {
@@ -271,25 +271,25 @@ describe('storage (M5)', () => {
 
 describe('sellers (M5)', () => {
   it('credits money at the item base price for each item consumed while online', () => {
-    // belt(gem) → seller; gem base price is 10.
+    // belt(diamond) → seller; diamond base price is 50.
     const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
-    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { money: 100 }))
-    expect(s.money).toBe(110)
+    const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { money: 100 }))
+    expect(s.money).toBe(150)
     expect(s.items.size).toBe(0) // consumed by the seller
   })
 
   it('buffers instead of selling while offline (no money, item consumed, M9)', () => {
     const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
-    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { money: 100, online: false }))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { money: 100, online: false }))
     expect(s.money).toBe(100) // no credit while offline
     expect(itemAt(s, 0, 0)).toBeUndefined() // consumed off the belt
-    expect(s.sellerBuffers.get(cellKey(1, 0))).toEqual({ gem: 1 }) // buffered for catch-up
+    expect(s.sellerBuffers.get(cellKey(1, 0))).toEqual({ diamond: 1 }) // buffered for catch-up
   })
 
   it('credits money at the live market price when one is supplied (M7)', () => {
     const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
-    // gem base price is 10; the live price of 25 must win.
-    const s = step(mkState(machines, itemsOf([[0, 0, 'gem']]), 0, new Map(), { prices: { gem: 25 } }))
+    // diamond base price is 50; the live price of 25 must win.
+    const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { prices: { diamond: 25 } }))
     expect(s.money).toBe(25)
   })
 })
