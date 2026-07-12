@@ -67,7 +67,7 @@ export function GameCanvas() {
 
     const loop = () => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, selected } = useGameStore.getState()
+      const { camera, world, chunks, items, buffers, selected } = useGameStore.getState()
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
@@ -90,6 +90,17 @@ export function GameCanvas() {
         const { x, y } = parseCellKey(key)
         if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
         const emoji = ITEMS_BY_ID[type]?.emoji
+        if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
+      }
+
+      // Items held inside processors/combiners ride on the machine cell so
+      // processing is visible: show the output hold, else the first input.
+      for (const [key, b] of buffers) {
+        const { x, y } = parseCellKey(key)
+        if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
+        const held = b.out ?? b.in.find((slot) => slot != null) ?? undefined
+        if (!held) continue
+        const emoji = ITEMS_BY_ID[held]?.emoji
         if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
       }
 

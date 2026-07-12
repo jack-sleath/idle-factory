@@ -13,7 +13,7 @@ import {
 import { CATALOG_BY_ID } from '../data'
 import { config } from '../data/config'
 import { loadSave, makeSave, writeSave } from '../game/save'
-import { step } from '../game/tick'
+import { step, type MachineBuffer } from '../game/tick'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -30,6 +30,8 @@ export interface GameState {
   chunks: ChunkIndex
   /** Items in transit, keyed by cell: cell key `x,y` → item type id. */
   items: Map<string, string>
+  /** Internal buffers for processor/combiner cells: cell key `x,y` → buffer. */
+  buffers: Map<string, MachineBuffer>
   /** Monotonic simulation tick counter. */
   tick: number
   /** Active tool. */
@@ -130,6 +132,7 @@ export const useGameStore = create<GameState>((set, get) => {
     world,
     chunks,
     items: new Map(),
+    buffers: new Map(),
     tick: 0,
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
@@ -181,13 +184,14 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, items, selected } = get()
+      const { world: w, chunks: c, items, buffers, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
       chunkRemove(c, cx, cy, config.chunkSize)
-      // Any item riding this cell is removed with the machine.
+      // Any item riding this cell, or buffered inside it, is removed with it.
       items.delete(key)
+      buffers.delete(key)
       if (selected && selected.x === cx && selected.y === cy) {
         set({ selected: null })
       }
@@ -199,9 +203,9 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     advanceTick: () => {
-      const { world: w, items, tick } = get()
-      const nextSim = step({ machines: w, items, tick })
-      set({ items: nextSim.items, tick: nextSim.tick })
+      const { world: w, items, buffers, tick } = get()
+      const nextSim = step({ machines: w, items, buffers, tick })
+      set({ items: nextSim.items, buffers: nextSim.buffers, tick: nextSim.tick })
     },
 
     saveNow: () => {

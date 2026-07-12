@@ -1,34 +1,60 @@
 import type { Dir, Machine } from './types'
 import { cellKey, dirDelta } from './world'
-import { CATALOG_BY_ID } from '../data'
+import { CATALOG_BY_ID, combinerOutput, processorOutput } from '../data'
+import { config } from '../data/config'
 
-// The simulation is a pure `step(state) -> state` function over a next-state
-// buffer, so it can be driven live at a fixed tick and also run headlessly in a
+// The simulation is a pure `step(state) -> state` function over next-state
+// buffers, so it can be driven live at a fixed tick and also run headlessly in a
 // loop (reused for offline catch-up in M9). It never mutates its input.
 //
-// Belt movement uses a PULL model: an item advances into its belt's output cell
-// only if that cell will be empty this tick and this item wins the cell. This
-// makes packed belts advance as a unit, applies back-pressure when the head is
-// blocked (no item is dropped or duplicated), and resolves merges
-// deterministically by fixed source priority N, E, S, W.
+// Movement uses a PULL model unified across machine kinds: an item advances into
+// a downstream cell only if that cell will have room this tick and this item
+// wins it. This makes packed belts advance as a unit, applies back-pressure when
+// a head is blocked (nothing is dropped or duplicated), and resolves merges into
+// a belt deterministically by fixed source priority N, E, S, W.
+//
+// Belts carry a single item on their cell. Processors and combiners instead hold
+// items in internal buffers (M4): a processor pulls from the cell directly
+// behind it, transforms it (1→1) and emits ahead, holding if the output is
+// blocked; a combiner pulls one item into each of its two perpendicular input
+// sides, and once both are filled emits the combined output (order-independent),
+// again holding if blocked. Any input a processor can't transform, or any pair a
+// combiner can't combine, becomes the configured "junk" item.
 
-/** The simulation state. In M3 `machines` is read-only; items live on cells. */
+/** Internal item storage for a processing machine (processor/combiner). */
+export interface MachineBuffer {
+  /** Input slots: processors have one; combiners have two (one per input side). */
+  in: (string | null)[]
+  /** Output hold: a transformed/combined item waiting to be pushed out. */
+  out: string | null
+}
+
+/** The simulation state. `machines` is read-only; items/buffers are rebuilt. */
 export interface SimState {
   machines: Map<string, Machine>
-  /** cell key → item type id (a cell holds at most one item). */
+  /** cell key → item type id (a belt cell holds at most one item). */
   items: Map<string, string>
+  /** cell key → internal buffer, for processor/combiner cells only. */
+  buffers: Map<string, MachineBuffer>
   /** Monotonic tick counter. */
   tick: number
 }
 
-// Neighbours of a target cell, in fixed priority order N, E, S, W, paired with
-// the output direction a machine in that neighbour must have to feed the target.
+const OPPOSITE: Record<Dir, Dir> = { N: 'S', S: 'N', E: 'W', W: 'E' }
+
+// Neighbours of a target belt cell, in fixed priority order N, E, S, W, paired
+// with the output direction a machine in that neighbour must face to feed it.
 const INCOMING: { dx: number; dy: number; out: Dir }[] = [
   { dx: 0, dy: -1, out: 'S' }, // north neighbour, pointing south
   { dx: 1, dy: 0, out: 'W' }, // east neighbour, pointing west
   { dx: 0, dy: 1, out: 'N' }, // south neighbour, pointing north
   { dx: -1, dy: 0, out: 'E' }, // west neighbour, pointing east
 ]
+
+/** A combiner's two input sides (slot 0, slot 1), given its output direction. */
+function inputDirs(outputDir: Dir): [Dir, Dir] {
+  return outputDir === 'E' || outputDir === 'W' ? ['N', 'S'] : ['E', 'W']
+}
 
 /** Whether a spawner is due to emit on a given tick. */
 function spawnerDue(machine: Machine, tick: number): boolean {
@@ -37,100 +63,204 @@ function spawnerDue(machine: Machine, tick: number): boolean {
   return tick % entry.rateTicks === 0
 }
 
-interface Source {
-  key: string
-  machine: Machine
-  kind: 'belt' | 'spawner'
+/** Junk fallbacks: any un-transformable input still produces a (junk) item. */
+function transformProcessor(input: string): string {
+  return processorOutput(input) ?? config.junkItemId
 }
-
-/**
- * The single winning source that will feed target cell (tx,ty) this tick, by
- * fixed N,E,S,W priority. A belt source must currently hold an item; a spawner
- * source must be due. Depends only on the current state, so it is stable.
- */
-function winningSource(state: SimState, tx: number, ty: number, tick: number): Source | null {
-  for (const nb of INCOMING) {
-    const key = cellKey(tx + nb.dx, ty + nb.dy)
-    const m = state.machines.get(key)
-    if (!m || m.dir !== nb.out) continue
-    if (m.kind === 'belt' && state.items.has(key)) return { key, machine: m, kind: 'belt' }
-    if (m.kind === 'spawner' && spawnerDue(m, tick)) return { key, machine: m, kind: 'spawner' }
-  }
-  return null
-}
-
-/** In M3 only belts carry/receive items (storage, seller, etc. arrive later). */
-function isReceiver(state: SimState, key: string): boolean {
-  return state.machines.get(key)?.kind === 'belt'
+function combine(a: string, b: string): string {
+  return combinerOutput(a, b) ?? config.junkItemId
 }
 
 /**
  * Advances the simulation by one tick, returning a new state. `machines` is
- * returned by reference (unchanged in M3); a fresh `items` map is produced.
+ * returned by reference (unchanged); fresh `items` and `buffers` maps are built.
  */
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
-  const { machines, items } = state
+  const { machines, items, buffers } = state
 
-  // Memoized recursion: does the item currently at `key` leave this tick?
-  const movingMemo = new Map<string, boolean>()
+  const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
+
+  /** Does the machine at `key` currently have an item/output ready to send? */
+  const readyToEmit = (key: string): boolean => {
+    const m = machines.get(key)
+    if (!m) return false
+    switch (m.kind) {
+      case 'belt':
+        return items.has(key)
+      case 'spawner':
+        return spawnerDue(m, tick)
+      case 'processor':
+      case 'combiner':
+        return buf(key)?.out != null
+      default:
+        return false // storage/seller are not emitters (M5)
+    }
+  }
+
+  /** The item value a ready machine at `key` would send this tick. */
+  const emittedValue = (key: string): string | undefined => {
+    const m = machines.get(key)
+    if (!m) return undefined
+    switch (m.kind) {
+      case 'belt':
+        return items.get(key)
+      case 'spawner':
+        return CATALOG_BY_ID[m.catalogId]?.outputItem
+      case 'processor':
+      case 'combiner':
+        return buf(key)?.out ?? undefined
+      default:
+        return undefined
+    }
+  }
+
+  // The single winning source that will feed target belt (tx,ty) this tick, by
+  // fixed N,E,S,W priority among neighbours that point in and are ready.
+  const winningFeederBelt = (tx: number, ty: number): string | null => {
+    for (const nb of INCOMING) {
+      const key = cellKey(tx + nb.dx, ty + nb.dy)
+      const m = machines.get(key)
+      if (!m || m.dir !== nb.out) continue
+      if (readyToEmit(key)) return key
+    }
+    return null
+  }
+
+  // A processor's input is the cell directly behind it (opposite its facing);
+  // that neighbour must point into the processor (same facing) and be ready.
+  const backFeeder = (m: Machine): string | null => {
+    const { dx, dy } = dirDelta(OPPOSITE[m.dir])
+    const key = cellKey(m.x + dx, m.y + dy)
+    const nb = machines.get(key)
+    return nb && nb.dir === m.dir && readyToEmit(key) ? key : null
+  }
+
+  // A combiner's slot-`slot` feeder: the neighbour on that input side, pointing
+  // inward and ready.
+  const combinerFeeder = (m: Machine, slot: 0 | 1): string | null => {
+    const sideDir = inputDirs(m.dir)[slot]
+    const { dx, dy } = dirDelta(sideDir)
+    const key = cellKey(m.x + dx, m.y + dy)
+    const nb = machines.get(key)
+    return nb && nb.dir === OPPOSITE[sideDir] && readyToEmit(key) ? key : null
+  }
+
+  const combinerSlotForFeeder = (m: Machine, fromKey: string): 0 | 1 | -1 => {
+    if (combinerFeeder(m, 0) === fromKey) return 0
+    if (combinerFeeder(m, 1) === fromKey) return 1
+    return -1
+  }
+
+  // Memoized recursion: does the item/output at `key` leave its cell this tick?
+  // Mutually recursive with `accepts` (a source emits only if its target has
+  // room, which for a belt depends on that belt's own item leaving).
+  const emitMemo = new Map<string, boolean>()
   const inProgress = new Set<string>()
 
-  const willBeEmpty = (key: string): boolean => (!items.has(key) ? true : moves(key))
-
-  function moves(key: string): boolean {
-    const memo = movingMemo.get(key)
+  function willEmit(key: string): boolean {
+    const memo = emitMemo.get(key)
     if (memo !== undefined) return memo
-    if (!items.has(key)) return false
-    const m = machines.get(key)
-    if (!m || m.kind !== 'belt') {
-      movingMemo.set(key, false)
+    if (!readyToEmit(key)) {
+      emitMemo.set(key, false)
       return false
     }
     if (inProgress.has(key)) return false // cycle guard: undecided → treat as staying
     inProgress.add(key)
 
+    const m = machines.get(key)!
     const { dx, dy } = dirDelta(m.dir)
-    const tx = m.x + dx
-    const ty = m.y + dy
-    const targetKey = cellKey(tx, ty)
-
-    let result = false
-    if (isReceiver(state, targetKey) && willBeEmpty(targetKey)) {
-      result = winningSource(state, tx, ty, tick)?.key === key
-    }
+    const result = accepts(cellKey(m.x + dx, m.y + dy), key)
 
     inProgress.delete(key)
-    movingMemo.set(key, result)
+    emitMemo.set(key, result)
     return result
   }
 
-  const next = new Map<string, string>()
-
-  // 1. Items that do not move stay put.
-  for (const [key, type] of items) {
-    if (!moves(key)) next.set(key, type)
-  }
-
-  // 2. Fill each belt cell that will be empty with its winning source (a moving
-  //    upstream item, or a due spawner's fresh item).
-  for (const m of machines.values()) {
-    if (m.kind !== 'belt') continue
-    const targetKey = cellKey(m.x, m.y)
-    if (next.has(targetKey)) continue
-    if (!willBeEmpty(targetKey)) continue
-
-    const winner = winningSource(state, m.x, m.y, tick)
-    if (!winner) continue
-
-    if (winner.kind === 'belt') {
-      const type = items.get(winner.key)
-      if (type !== undefined && moves(winner.key)) next.set(targetKey, type)
-    } else {
-      const entry = CATALOG_BY_ID[winner.machine.catalogId]
-      if (entry?.outputItem) next.set(targetKey, entry.outputItem)
+  /** Will the cell at `targetKey` receive the item coming from `fromKey`? */
+  function accepts(targetKey: string, fromKey: string): boolean {
+    const tm = machines.get(targetKey)
+    if (!tm) return false
+    switch (tm.kind) {
+      case 'belt':
+        if (winningFeederBelt(tm.x, tm.y) !== fromKey) return false
+        return !items.has(targetKey) || willEmit(targetKey)
+      case 'processor':
+        if (backFeeder(tm) !== fromKey) return false
+        return processorInputFree(targetKey)
+      case 'combiner': {
+        const slot = combinerSlotForFeeder(tm, fromKey)
+        return slot >= 0 && combinerSlotFree(targetKey, slot)
+      }
+      default:
+        return false // storage/seller do not accept in M4 (M5)
     }
   }
 
-  return { machines, items: next, tick }
+  // A processor's input slot has room this tick if it is empty, or its held
+  // output will clear (letting the current input transform and free the slot).
+  function processorInputFree(key: string): boolean {
+    const b = buf(key)
+    if (!b || b.in[0] == null || b.out == null) return true
+    return willEmit(key)
+  }
+
+  // A combiner input slot has room if empty, or both slots are full and the
+  // output will clear (letting the pair combine and free both slots).
+  function combinerSlotFree(key: string, slot: number): boolean {
+    const b = buf(key)
+    if (!b || b.in[slot] == null) return true
+    return b.in[0] != null && b.in[1] != null && (b.out == null || willEmit(key))
+  }
+
+  const nextItems = new Map<string, string>()
+  const nextBuffers = new Map<string, MachineBuffer>()
+
+  for (const m of machines.values()) {
+    const key = cellKey(m.x, m.y)
+    switch (m.kind) {
+      case 'belt': {
+        // Keep a held item; a belt that clears may receive a fresh one.
+        let value = items.has(key) && !willEmit(key) ? items.get(key) : undefined
+        const winner = winningFeederBelt(m.x, m.y)
+        if (winner && willEmit(winner)) value = emittedValue(winner)
+        if (value !== undefined) nextItems.set(key, value)
+        break
+      }
+      case 'processor': {
+        const b = buf(key) ?? { in: [null], out: null }
+        const emit = willEmit(key)
+        // Consume (transform) the input when the output slot is/will be free.
+        const consumes = b.in[0] != null && (b.out == null || emit)
+        const out = consumes ? transformProcessor(b.in[0]!) : emit ? null : b.out
+        let in0: string | null = consumes ? null : b.in[0]
+        const feeder = backFeeder(m)
+        if (feeder && willEmit(feeder)) in0 = emittedValue(feeder) ?? in0
+        if (in0 != null || out != null) nextBuffers.set(key, { in: [in0], out })
+        break
+      }
+      case 'combiner': {
+        const b = buf(key) ?? { in: [null, null], out: null }
+        const emit = willEmit(key)
+        const consumes = b.in[0] != null && b.in[1] != null && (b.out == null || emit)
+        const out = consumes ? combine(b.in[0]!, b.in[1]!) : emit ? null : b.out
+        const next: [string | null, string | null] = [
+          consumes ? null : b.in[0],
+          consumes ? null : b.in[1],
+        ]
+        for (const slot of [0, 1] as const) {
+          const feeder = combinerFeeder(m, slot)
+          if (feeder && willEmit(feeder)) next[slot] = emittedValue(feeder) ?? next[slot]
+        }
+        if (next[0] != null || next[1] != null || out != null) {
+          nextBuffers.set(key, { in: next, out })
+        }
+        break
+      }
+      // spawner: emits into neighbours but stores nothing itself.
+      // storage/seller: no simulation behaviour until M5.
+    }
+  }
+
+  return { machines, items: nextItems, buffers: nextBuffers, tick }
 }
