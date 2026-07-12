@@ -192,7 +192,7 @@
 
 ---
 
-## Milestone 12 (deferred) — Google Drive sync
+## Milestone-drive (parked) — Google Drive sync
 **Goal:** Optional cloud save/load via Google Drive.
 
 **Tasks:**
