@@ -21,9 +21,9 @@
 - (Deploy workflow deferred to M11.)
 
 **Done when:**
-- [ ] `npm run dev` serves the app locally; `npm run build` succeeds under TS strict.
-- [ ] The canvas draws Twemoji sprites that you can pan.
-- [ ] The app is installable (manifest + service worker registered) and loads offline locally, with sprites still rendering.
+- [x] `npm run dev` serves the app locally; `npm run build` succeeds under TS strict.
+- [x] The canvas draws Twemoji sprites that you can pan.
+- [x] The app is installable (manifest + service worker registered) and loads offline locally, with sprites still rendering.
 
 ---
 
