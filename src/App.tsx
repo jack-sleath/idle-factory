@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Emoji } from './components/Emoji'
 import { GameCanvas } from './components/GameCanvas'
+import { ActionTools } from './components/ActionTools'
 import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
 import { MarketPanel } from './components/MarketPanel'
@@ -88,6 +89,7 @@ export default function App() {
       </header>
       <main className="stage">
         <GameCanvas />
+        <ActionTools />
         <StoragePanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
