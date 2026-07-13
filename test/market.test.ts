@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { catchUpMarket, seedMarket, stepMarket, type Market, HISTORY_LEN } from '../src/game/market'
+import { catchUpMarket, fillHistory, seedMarket, stepMarket, type Market, HISTORY_LEN } from '../src/game/market'
 import { ITEMS_BY_ID } from '../src/data'
 import { config } from '../src/data/config'
 
@@ -8,6 +8,64 @@ const INTERVAL_MS = config.marketIntervalMinutes * 60_000
 function oneItemMarket(id: string, price: number): Market {
   return { lastUpdate: 0, items: { [id]: { price, history: [price], crashed: false } } }
 }
+
+describe('seedMarket: pre-seeded history', () => {
+  it('fills a full HISTORY_LEN sparkline window so it is not a flat base-value line', () => {
+    const m = seedMarket(0, () => 0.25) // biased-low but non-neutral rng → real movement
+    for (const id of Object.keys(m.items)) {
+      const it = m.items[id]
+      expect(it.history.length).toBe(HISTORY_LEN)
+      expect(it.crashed).toBe(false)
+      // The newest point (live price) is left exactly at the starting value…
+      expect(it.history[it.history.length - 1]).toBe(it.price)
+      // …but the window as a whole moves, so the sparkline is not flat.
+      expect(new Set(it.history).size).toBeGreaterThan(1)
+    }
+  })
+
+  it('keeps the current price at the item starting value', () => {
+    const m = seedMarket(0)
+    expect(m.items['ore'].price).toBe(ITEMS_BY_ID['ore'].startingValue)
+  })
+
+  it('clamps synthetic back-story within each item price band', () => {
+    const m = seedMarket(0) // default rng; run the walk against real bounds
+    for (const id of Object.keys(m.items)) {
+      const def = ITEMS_BY_ID[id]
+      for (const p of m.items[id].history) {
+        expect(p).toBeGreaterThanOrEqual(def.minPrice)
+        expect(p).toBeLessThanOrEqual(def.maxPrice)
+      }
+    }
+  })
+})
+
+describe('fillHistory: back-fill short windows', () => {
+  it('grows a short history to a full HISTORY_LEN window, preserving real points', () => {
+    const m: Market = { lastUpdate: 7, items: { ore: { price: 3, history: [2, 3], crashed: false } } }
+    const f = fillHistory(m, () => 0.5)
+    expect(f.items['ore'].history.length).toBe(HISTORY_LEN)
+    expect(f.lastUpdate).toBe(7)
+    // The original recorded points stay at the newest (right) end, in order.
+    expect(f.items['ore'].history.slice(-2)).toEqual([2, 3])
+    expect(f.items['ore'].price).toBe(3) // live price untouched
+  })
+
+  it('is a no-op (same reference) when every item is already full', () => {
+    const full = seedMarket(0)
+    expect(fillHistory(full)).toBe(full)
+  })
+
+  it('clamps back-filled points to the item price band', () => {
+    const def = ITEMS_BY_ID['ore']
+    const m: Market = { lastUpdate: 0, items: { ore: { price: def.startingValue, history: [def.startingValue], crashed: false } } }
+    const f = fillHistory(m) // default rng against real bounds
+    for (const p of f.items['ore'].history) {
+      expect(p).toBeGreaterThanOrEqual(def.minPrice)
+      expect(p).toBeLessThanOrEqual(def.maxPrice)
+    }
+  })
+})
 
 describe('stepMarket: neutral random walk', () => {
   it('leaves prices unchanged when rand()=0.5 (factor exp(0)=1)', () => {
@@ -57,8 +115,8 @@ describe('catchUpMarket', () => {
     const start = seedMarket(0)
     const now = 3 * INTERVAL_MS + INTERVAL_MS / 2 // 3.5 intervals elapsed
     const m = catchUpMarket(start, now, () => 0.5)
-    expect(m.items['ore'].history.length).toBe(1 + 3) // 3 steps applied
-    expect(m.lastUpdate).toBe(3 * INTERVAL_MS) // remainder preserved
+    expect(m.items['ore'].history.length).toBe(HISTORY_LEN) // pre-seeded window stays full
+    expect(m.lastUpdate).toBe(3 * INTERVAL_MS) // 3 whole steps applied; remainder preserved
   })
 
   it('is a no-op (same reference) when less than one interval has elapsed', () => {
