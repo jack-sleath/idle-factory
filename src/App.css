@@ -478,20 +478,34 @@
 .admin__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 2px 0;
-  font-size: 13px;
+  padding: 3px 0;
+  font-size: 12px;
 }
 
-.admin__row input {
-  width: 90px;
-  padding: 4px 6px;
+.admin__rowLabel {
+  flex: 0 0 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin__slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.admin__num {
+  flex: 0 0 auto;
+  width: 62px;
+  padding: 3px 5px;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   color: var(--text);
   font: inherit;
+  font-size: 12px;
 }
 
 .admin__spawner {

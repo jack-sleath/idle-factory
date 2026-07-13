@@ -7,11 +7,60 @@ const MACHINE_IDS = ['processor-basic', 'combiner-basic', 'seller-basic', 'belt-
 
 type Category = 'price' | 'cost' | 'rateTicks'
 
+/** Slider range + step for a field, derived from its default so it scales sensibly. */
+function bounds(kind: Category, def: number) {
+  if (kind === 'rateTicks') return { min: 1, max: Math.max(20, Math.ceil(def * 3)), step: 1 }
+  const max = Math.max(10, Math.ceil(def * 4))
+  const step = def >= 100 ? 5 : def >= 10 ? 1 : 0.1
+  return { min: 0, max, step }
+}
+
+/** A label + drag slider + number box, all bound to one value. */
+function Tuner({
+  label,
+  kind,
+  def,
+  value,
+  onChange,
+}: {
+  label: string
+  kind: Category
+  def: number
+  value: number
+  onChange: (n: number) => void
+}) {
+  const { min, max, step } = bounds(kind, def)
+  return (
+    <label className="admin__row">
+      <span className="admin__rowLabel" title={label}>
+        {label}
+      </span>
+      <input
+        type="range"
+        className="admin__slider"
+        min={min}
+        max={Math.max(max, value)}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <input
+        type="number"
+        className="admin__num"
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </label>
+  )
+}
+
 /**
  * Dev-only economy tuning screen (milestone-power-scaling). Gated behind the
- * `#admin` hash so it never shows for players. Edit prices / costs / rates and
- * watch the analytical scaling model recompute live; export the changes as JSON
- * to paste back into the data files. Overrides are in-memory only.
+ * `#admin` hash so it never shows for players. Drag the sliders (or type) to
+ * change prices / costs / rates and watch the analytical scaling model recompute
+ * live; export the changes as JSON to paste back into the data files. Overrides
+ * are in-memory only.
  */
 export function AdminScreen({ onClose }: { onClose: () => void }) {
   const [ov, setOv] = useState<ScalingOverrides>({ price: {}, cost: {}, rateTicks: {} })
@@ -19,18 +68,18 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
 
   const spawners = CATALOG.filter((c) => c.kind === 'spawner')
 
-  const set = (cat: Category, id: string, raw: string) => {
+  // Set an override, or drop it when the value returns to the data default so
+  // the export only ever contains real changes.
+  const set = (cat: Category, id: string, n: number, def: number) => {
     setOv((prev) => {
-      const next = { ...prev, [cat]: { ...prev[cat] } }
-      const map = next[cat] as Record<string, number>
-      const n = Number(raw)
-      if (raw === '' || Number.isNaN(n)) delete map[id]
+      const map = { ...(prev[cat] as Record<string, number>) }
+      if (Number.isNaN(n) || Math.abs(n - def) < 1e-9) delete map[id]
       else map[id] = n
-      return next
+      return { ...prev, [cat]: map }
     })
   }
+  const val = (cat: Category, id: string, def: number) => (ov[cat] as Record<string, number>)[id] ?? def
 
-  // Only keep non-empty override maps in the export.
   const exportJson = JSON.stringify(
     Object.fromEntries(
       (Object.entries(ov) as [Category, Record<string, number>][]).filter(([, m]) => Object.keys(m).length),
@@ -43,7 +92,7 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
     <div className="admin">
       <header className="admin__bar">
         <strong>⚙️ Economy tuning</strong>
-        <span className="admin__hint">Dev only (#admin). Overrides are in-memory; export to keep them.</span>
+        <span className="admin__hint">Dev only (#admin). Drag to fiddle; overrides are in-memory, export to keep them.</span>
         <button type="button" className="save__btn" onClick={() => setOv({ price: {}, cost: {}, rateTicks: {} })}>
           Reset
         </button>
@@ -84,29 +133,38 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
 
         <section className="admin__col">
           <h3>Machine costs</h3>
-          {MACHINE_IDS.map((id) => (
-            <label key={id} className="admin__row">
-              <span>{id}</span>
-              <input
-                type="number"
-                defaultValue={CATALOG.find((c) => c.id === id)?.cost ?? 0}
-                onChange={(e) => set('cost', id, e.target.value)}
+          {MACHINE_IDS.map((id) => {
+            const def = CATALOG.find((c) => c.id === id)?.cost ?? 0
+            return (
+              <Tuner
+                key={id}
+                label={id}
+                kind="cost"
+                def={def}
+                value={val('cost', id, def)}
+                onChange={(n) => set('cost', id, n, def)}
               />
-            </label>
-          ))}
+            )
+          })}
 
           <h3>Spawners</h3>
           {spawners.map((c) => (
             <div key={c.id} className="admin__spawner">
               <div className="admin__spawnerName">{c.name}</div>
-              <label className="admin__row">
-                <span>cost</span>
-                <input type="number" defaultValue={c.cost} onChange={(e) => set('cost', c.id, e.target.value)} />
-              </label>
-              <label className="admin__row">
-                <span>rateTicks</span>
-                <input type="number" defaultValue={c.rateTicks ?? 0} onChange={(e) => set('rateTicks', c.id, e.target.value)} />
-              </label>
+              <Tuner
+                label="cost"
+                kind="cost"
+                def={c.cost}
+                value={val('cost', c.id, c.cost)}
+                onChange={(n) => set('cost', c.id, n, c.cost)}
+              />
+              <Tuner
+                label="rateTicks"
+                kind="rateTicks"
+                def={c.rateTicks ?? 1}
+                value={val('rateTicks', c.id, c.rateTicks ?? 1)}
+                onChange={(n) => set('rateTicks', c.id, n, c.rateTicks ?? 1)}
+              />
             </div>
           ))}
         </section>
@@ -114,15 +172,14 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
         <section className="admin__col">
           <h3>Item prices</h3>
           {ITEMS.map((it) => (
-            <label key={it.id} className="admin__row">
-              <span>{it.name}</span>
-              <input
-                type="number"
-                step="0.1"
-                defaultValue={it.startingValue}
-                onChange={(e) => set('price', it.id, e.target.value)}
-              />
-            </label>
+            <Tuner
+              key={it.id}
+              label={it.name}
+              kind="price"
+              def={it.startingValue}
+              value={val('price', it.id, it.startingValue)}
+              onChange={(n) => set('price', it.id, n, it.startingValue)}
+            />
           ))}
         </section>
       </div>
