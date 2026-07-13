@@ -7,6 +7,7 @@ import { MarketPanel } from './components/MarketPanel'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
 import { Onboarding } from './components/Onboarding'
+import { AdminScreen } from './components/AdminScreen'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useMarketLoop } from './hooks/useMarketLoop'
 import { useOfflineProgress } from './hooks/useOfflineProgress'
@@ -30,6 +31,17 @@ function useAutosaveOnHide() {
   }, [])
 }
 
+/** Track the URL hash so the dev-only admin screen can gate on `#admin`. */
+function useHash(): string {
+  const [hash, setHash] = useState(() => (typeof window !== 'undefined' ? window.location.hash : ''))
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+  return hash
+}
+
 export default function App() {
   useAutosaveOnHide()
   useOfflineProgress()
@@ -38,6 +50,7 @@ export default function App() {
   const money = useGameStore((s) => s.money)
   const [marketOpen, setMarketOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
+  const adminOpen = useHash() === '#admin'
 
   return (
     <div className="app">
@@ -75,6 +88,7 @@ export default function App() {
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
         <AwaySummary />
         <Onboarding />
+        {adminOpen && <AdminScreen onClose={() => (window.location.hash = '')} />}
       </main>
       <Palette />
     </div>

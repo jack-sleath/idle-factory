@@ -205,9 +205,9 @@
 - (Optional / stretch) Apply the overrides to the live game session for hands-on playtesting.
 
 **Done when:**
-- [ ] The model reports time-to-full-automation (plus the unlock timeline and money curve) for the current economy from a fresh $0 start under a defined build policy.
-- [ ] The admin screen lets you change costs / rates / prices and see the scaling metrics update live, without appearing in the shipped player UI.
-- [ ] Tuned values can be exported as JSON for pasting back into the data files.
+- [x] The model reports time-to-full-automation (plus the unlock timeline and income ramp) for the current economy from a fresh $0 start under an ROI-greedy build policy.
+- [x] The admin screen (gated behind `#admin`) lets you change costs / rates / prices and see the scaling metrics update live, without appearing in the shipped player UI.
+- [x] Tuned values can be exported as JSON for pasting back into the data files.
 
 ---
 
