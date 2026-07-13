@@ -109,14 +109,14 @@
   gap: 6px;
 }
 
-/* Select / Rotate / Delete, floated in a vertical stack over the world on the
-   right edge of the stage. Buttons share .palette__btn so they keep the same
-   size as the build palette's. */
+/* Select / Rotate / Delete, floated in a vertical stack over the world in the
+   stage's bottom-right corner — just above the build palette, clear of the
+   storage inspector that floats top-right. Buttons share .palette__btn so they
+   keep the same size as the build palette's. */
 .action-tools {
   position: absolute;
   right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;

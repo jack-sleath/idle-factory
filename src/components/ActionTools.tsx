@@ -12,8 +12,9 @@ const ACTION_TOOLS: { kind: 'select' | 'rotate' | 'delete'; label: string; emoji
 const IDLE_RESET_MS = 60_000
 
 /**
- * The Select / Rotate / Delete action tools, floated in a vertical stack on the
- * right edge of the stage. While any other tool is active, a minute with no
+ * The Select / Rotate / Delete action tools, floated in a vertical stack in
+ * the stage's bottom-right corner, above the build palette and clear of the
+ * storage inspector. While any other tool is active, a minute with no
  * pointer input anywhere reverts to Select so a stale Rotate/Delete/build tool
  * can't surprise the player when they come back.
  */
