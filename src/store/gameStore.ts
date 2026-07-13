@@ -15,7 +15,7 @@ import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
 import { loadSave, makeSave, migrateSave, parseSave, writeSave, type GameSave } from '../game/save'
 import { step, type MachineBuffer, type StorageState } from '../game/tick'
-import { catchUpMarket, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
+import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 import { computeOffline, type AwaySummary } from '../game/offline'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
@@ -125,8 +125,9 @@ function initState(): InitState {
     const world = worldFromMachines(saved.machines)
     const stores = new Map<string, StorageState>()
     for (const s of saved.stores) stores.set(s.key, { item: s.item, count: s.count })
-    // Advance the market by however many intervals elapsed while away (capped).
-    const market = catchUpMarket(saved.market ?? seedMarket(now), now, Math.random)
+    // Advance the market by however many intervals elapsed while away (capped),
+    // then back-fill any short sparkline so a young save still charts full.
+    const market = fillHistory(catchUpMarket(saved.market ?? seedMarket(now), now, Math.random))
     return {
       camera: saved.camera,
       world,
@@ -188,7 +189,7 @@ export const useGameStore = create<GameState>((set, get) => {
       stores: nextStores,
       splitterCursors: new Map(),
       money: save.money,
-      market: save.market ?? seedMarket(Date.now()),
+      market: save.market ? fillHistory(save.market) : seedMarket(Date.now()),
       savedAt: save.savedAt,
       selected: null,
       worldRev: get().worldRev + 1,
