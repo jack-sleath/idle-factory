@@ -421,6 +421,140 @@
   width: 100%;
 }
 
+/* Dev-only economy tuning screen (#admin). Full-screen, above everything. */
+.admin {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #0e141a;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+.admin__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.admin__hint {
+  opacity: 0.6;
+  font-size: 12px;
+  margin-right: auto;
+}
+
+.admin__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .admin__body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+}
+
+.admin__col {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 6px;
+}
+
+.admin__col h3 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.admin__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.admin__row input {
+  width: 90px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+}
+
+.admin__spawner {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.admin__spawnerName {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.admin__stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.admin__stats dt {
+  opacity: 0.7;
+}
+
+.admin__stats dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.admin__timeline {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.admin__timeline li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.admin__muted {
+  opacity: 0.6;
+}
+
+.admin__export {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 11px;
+}
+
 .onboard__list {
   margin: 0 0 12px;
   padding-left: 18px;
