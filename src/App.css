@@ -39,8 +39,8 @@
 .hud__btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  justify-content: center;
+  padding: 7px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
@@ -67,6 +67,14 @@
   font-size: 16px;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+
+/* Reserve room for the longest abbreviated amount (e.g. "999.99", "1.02M") so
+   the readout doesn't jitter and shove the buttons as digits tick over. */
+.hud__money-value {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
 }
 
 .stage {
@@ -101,10 +109,22 @@
   gap: 6px;
 }
 
-.palette__group--actions {
-  margin-left: auto;
-  padding-left: 16px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+/* Select / Rotate / Delete, floated in a vertical stack over the world in the
+   stage's bottom-right corner — just above the build palette, clear of the
+   storage inspector that floats top-right. Buttons share .palette__btn so they
+   keep the same size as the build palette's. */
+.action-tools {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: var(--chrome);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .palette__btn {
@@ -586,7 +606,7 @@
     min-height: 66px;
   }
   .hud__btn {
-    padding: 10px 12px;
+    padding: 10px;
   }
   .save__btn,
   .panel__sell,

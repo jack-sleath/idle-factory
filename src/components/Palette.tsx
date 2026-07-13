@@ -4,12 +4,6 @@ import { countPlaced, effectiveCost } from '../game/economy'
 import { formatMoney } from '../lib/format'
 import { Emoji } from './Emoji'
 
-const ACTION_TOOLS: { kind: 'select' | 'rotate' | 'delete'; label: string; emoji: string }[] = [
-  { kind: 'select', label: 'Select', emoji: '🔍' },
-  { kind: 'rotate', label: 'Rotate', emoji: '🔄' },
-  { kind: 'delete', label: 'Delete', emoji: '❌' },
-]
-
 function sameTool(a: Tool, b: Tool): boolean {
   if (a.kind !== b.kind) return false
   if (a.kind === 'build' && b.kind === 'build') return a.catalogId === b.catalogId
@@ -17,10 +11,10 @@ function sameTool(a: Tool, b: Tool): boolean {
 }
 
 /**
- * The tool palette / shop: one build button per catalog entry, plus the
- * Select / Rotate / Delete action tools. The active tool determines what
- * tapping a cell does. Each build button shows its price (or "Free" for a
- * first-of-kind basic) and is disabled when the player can't afford it.
+ * The tool palette / shop: one build button per catalog entry. The active tool
+ * determines what tapping a cell does. Each build button shows its price (or
+ * "Free" for a first-of-kind basic) and is disabled when the player can't
+ * afford it. The Select / Rotate / Delete tools live in <ActionTools />.
  */
 export function Palette() {
   const tool = useGameStore((s) => s.tool)
@@ -52,23 +46,6 @@ export function Palette() {
               <span className={`palette__cost${cost === 0 ? ' is-free' : ''}`}>
                 {cost === 0 ? 'Free' : formatMoney(cost)}
               </span>
-            </button>
-          )
-        })}
-      </div>
-      <div className="palette__group palette__group--actions">
-        {ACTION_TOOLS.map((action) => {
-          const t: Tool = { kind: action.kind }
-          return (
-            <button
-              key={action.kind}
-              type="button"
-              className={`palette__btn${sameTool(t, tool) ? ' is-active' : ''}`}
-              onClick={() => setTool(t)}
-              title={action.label}
-            >
-              <Emoji emoji={action.emoji} size={26} label={action.label} />
-              <span className="palette__label">{action.label}</span>
             </button>
           )
         })}

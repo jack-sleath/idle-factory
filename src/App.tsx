@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Emoji } from './components/Emoji'
 import { GameCanvas } from './components/GameCanvas'
+import { ActionTools } from './components/ActionTools'
 import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
 import { MarketPanel } from './components/MarketPanel'
@@ -64,25 +65,31 @@ export default function App() {
             type="button"
             className={`hud__btn${marketOpen ? ' is-active' : ''}`}
             aria-pressed={marketOpen}
+            aria-label="Market"
+            title="Market"
             onClick={() => setMarketOpen((open) => !open)}
           >
-            <Emoji emoji="📈" size={16} label="market" /> Market
+            <Emoji emoji="📈" size={18} label="market" />
           </button>
           <button
             type="button"
             className={`hud__btn${saveOpen ? ' is-active' : ''}`}
             aria-pressed={saveOpen}
+            aria-label="Saves"
+            title="Saves"
             onClick={() => setSaveOpen((open) => !open)}
           >
-            <Emoji emoji="💾" size={16} label="saves" /> Saves
+            <Emoji emoji="💾" size={18} label="saves" />
           </button>
           <span className="hud__money" title="Money">
-            <Emoji emoji="💰" size={18} label="money" /> {formatMoney(money)}
+            <Emoji emoji="💰" size={18} label="money" />
+            <span className="hud__money-value">{formatMoney(money)}</span>
           </span>
         </div>
       </header>
       <main className="stage">
         <GameCanvas />
+        <ActionTools />
         <StoragePanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}

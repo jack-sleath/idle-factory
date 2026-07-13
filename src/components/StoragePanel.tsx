@@ -1,18 +1,21 @@
 import { useGameStore } from '../store/gameStore'
-import { basePrice, ITEMS_BY_ID, storageCapacity } from '../data'
+import { ITEMS_BY_ID, storageCapacity } from '../data'
+import { livePrice } from '../game/market'
 import { cellKey } from '../game/world'
 import { formatMoney, formatShort } from '../lib/format'
 import { Emoji } from './Emoji'
 
 /**
  * Inspector shown when the Select tool picks a storage cell: what it holds, how
- * full it is, and its liquidation value with a Sell-All button. Reads live
- * store state so the count and value tick up as items arrive.
+ * full it is, and its liquidation value at the current market price with a
+ * Sell-All button — matching what sellAll actually banks. Reads live store and
+ * market state so the count and value track item arrivals and price moves.
  */
 export function StoragePanel() {
   const selected = useGameStore((s) => s.selected)
   const world = useGameStore((s) => s.world)
   const stores = useGameStore((s) => s.stores)
+  const market = useGameStore((s) => s.market)
   const sellAll = useGameStore((s) => s.sellAll)
 
   if (!selected) return null
@@ -25,7 +28,7 @@ export function StoragePanel() {
   const item = store?.item ?? null
   const count = store?.count ?? 0
   const def = item ? ITEMS_BY_ID[item] : undefined
-  const unit = item ? basePrice(item) : 0
+  const unit = item ? livePrice(market, item) : 0
   const total = count * unit
 
   return (
@@ -55,8 +58,8 @@ export function StoragePanel() {
             </span>
           </div>
           <div className="panel__row">
-            <span className="panel__muted">Unit {formatMoney(unit)}</span>
-            <span className="panel__value">{formatMoney(total)}</span>
+            <span className="panel__muted">Market price</span>
+            <span className="panel__value">{formatMoney(unit)} each</span>
           </div>
           <button
             type="button"
@@ -64,7 +67,7 @@ export function StoragePanel() {
             disabled={count <= 0}
             onClick={() => sellAll(selected.x, selected.y)}
           >
-            Sell All
+            Sell All for {formatMoney(total)}
           </button>
         </div>
       ) : (
