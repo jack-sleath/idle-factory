@@ -39,8 +39,8 @@
 .hud__btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  justify-content: center;
+  padding: 7px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
@@ -67,6 +67,14 @@
   font-size: 16px;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+
+/* Reserve room for the longest abbreviated amount (e.g. "999.99", "1.02M") so
+   the readout doesn't jitter and shove the buttons as digits tick over. */
+.hud__money-value {
+  display: inline-block;
+  min-width: 6ch;
+  text-align: right;
 }
 
 .stage {
@@ -586,7 +594,7 @@
     min-height: 66px;
   }
   .hud__btn {
-    padding: 10px 12px;
+    padding: 10px;
   }
   .save__btn,
   .panel__sell,
