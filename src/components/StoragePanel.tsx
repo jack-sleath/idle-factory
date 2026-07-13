@@ -58,8 +58,8 @@ export function StoragePanel() {
             </span>
           </div>
           <div className="panel__row">
-            <span className="panel__muted">Unit {formatMoney(unit)}</span>
-            <span className="panel__value">{formatMoney(total)}</span>
+            <span className="panel__muted">Market price</span>
+            <span className="panel__value">{formatMoney(unit)} each</span>
           </div>
           <button
             type="button"
@@ -67,7 +67,7 @@ export function StoragePanel() {
             disabled={count <= 0}
             onClick={() => sellAll(selected.x, selected.y)}
           >
-            Sell All
+            Sell All for {formatMoney(total)}
           </button>
         </div>
       ) : (
