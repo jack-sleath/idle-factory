@@ -6,7 +6,12 @@
     { "in": "bar", "out": "ring" },
     { "in": "silver-bar", "out": "silver-ring" },
     { "in": "gold-bar", "out": "gold-ring" },
-    { "in": "milk", "out": "cheese" }
+    { "in": "milk", "out": "cheese" },
+
+    { "in": "log", "out": "planks" },
+    { "in": "planks", "out": "stick" },
+    { "in": "wool", "out": "string" },
+    { "in": "wheat", "out": "bread" }
   ],
   "combiner": [
     { "a": "silver-ring", "b": "sapphire", "out": "silver-sapphire-ring" },
@@ -25,6 +30,13 @@
     { "a": "gold-bar", "b": "sapphire", "out": "gold-sapphire-amulet" },
     { "a": "gold-bar", "b": "emerald", "out": "gold-emerald-amulet" },
     { "a": "gold-bar", "b": "ruby", "out": "gold-ruby-amulet" },
-    { "a": "gold-bar", "b": "diamond", "out": "gold-diamond-amulet" }
+    { "a": "gold-bar", "b": "diamond", "out": "gold-diamond-amulet" },
+
+    { "a": "stick", "b": "bar", "out": "iron-sword" },
+    { "a": "stick", "b": "gold-bar", "out": "gold-sword" },
+    { "a": "stick", "b": "diamond", "out": "diamond-sword" },
+    { "a": "stick", "b": "string", "out": "bow" },
+    { "a": "planks", "b": "bar", "out": "axe" },
+    { "a": "planks", "b": "wool", "out": "bed" }
   ]
 }

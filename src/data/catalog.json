@@ -54,6 +54,14 @@
     "defaultDir": "E"
   },
   {
+    "id": "splitter-basic",
+    "kind": "splitter",
+    "name": "Splitter",
+    "emoji": "🔱",
+    "cost": 40,
+    "defaultDir": "E"
+  },
+  {
     "id": "cow",
     "kind": "spawner",
     "name": "Cow",
@@ -62,6 +70,36 @@
     "defaultDir": "E",
     "outputItem": "milk",
     "rateTicks": 6
+  },
+  {
+    "id": "oak-tree",
+    "kind": "spawner",
+    "name": "Oak Tree",
+    "emoji": "🌳",
+    "cost": 30,
+    "defaultDir": "E",
+    "outputItem": "log",
+    "rateTicks": 5
+  },
+  {
+    "id": "sheep",
+    "kind": "spawner",
+    "name": "Sheep",
+    "emoji": "🐑",
+    "cost": 90,
+    "defaultDir": "E",
+    "outputItem": "wool",
+    "rateTicks": 6
+  },
+  {
+    "id": "wheat-field",
+    "kind": "spawner",
+    "name": "Wheat Field",
+    "emoji": "🌾",
+    "cost": 40,
+    "defaultDir": "E",
+    "outputItem": "wheat",
+    "rateTicks": 5
   },
   {
     "id": "silver-mine",

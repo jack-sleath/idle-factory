@@ -386,3 +386,63 @@ describe('sellers (M5)', () => {
     expect(s.money).toBe(25)
   })
 })
+
+describe('splitter', () => {
+  const splitter = (x: number, y: number, dir: Dir) =>
+    machine('splitter', x, y, dir, 'splitter-basic')
+
+  // An E-facing splitter draws from the W (behind) and offers out E, S, N.
+  it('round-robins a held item across its three output sides', () => {
+    const machines = worldOf(
+      splitter(0, 0, 'E'),
+      belt(1, 0, 'E'), // forward (E)
+      belt(0, 1, 'S'), // clockwise (S)
+      belt(0, -1, 'N'), // anticlockwise (N)
+    )
+    const sides: string[] = []
+    let cursors = new Map<string, number>()
+    for (let i = 0; i < 4; i++) {
+      // Re-seed the splitter each tick and carry the cursor forward, so we watch
+      // successive items pick successive sides rather than pile onto belts.
+      const st = mkState(machines, itemsOf([[0, 0, 'ore']]), i)
+      st.splitterCursors = cursors
+      const s = step(st)
+      if (itemAt(s, 1, 0) === 'ore') sides.push('E')
+      else if (itemAt(s, 0, 1) === 'ore') sides.push('S')
+      else if (itemAt(s, 0, -1) === 'ore') sides.push('N')
+      expect(itemAt(s, 0, 0)).toBeUndefined() // the item always leaves
+      cursors = s.splitterCursors!
+    }
+    expect(sides).toEqual(['E', 'S', 'N', 'E'])
+  })
+
+  it('draws input only from directly behind, never from a side', () => {
+    // A belt on the N side pointing into the splitter must be ignored; only the
+    // belt behind (W, pointing E) may feed it.
+    const machines = worldOf(splitter(0, 0, 'E'), belt(0, -1, 'S'))
+    const s = step(mkState(machines, itemsOf([[0, -1, 'ore']]), 0))
+    expect(itemAt(s, 0, 0)).toBeUndefined() // side item rejected
+    expect(itemAt(s, 0, -1)).toBe('ore') // stays put on the side belt
+  })
+
+  it('accepts an item pushed in from behind', () => {
+    const machines = worldOf(belt(-1, 0, 'E'), splitter(0, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[-1, 0, 'ore']]), 0))
+    expect(itemAt(s, 0, 0)).toBe('ore') // moved from the back belt into the splitter
+    expect(itemAt(s, -1, 0)).toBeUndefined()
+  })
+
+  it('skips a blocked side and routes to the next open one', () => {
+    // Forward (E) is a full dead-end belt; the splitter should skip it and use S.
+    const machines = worldOf(splitter(0, 0, 'E'), belt(1, 0, 'E'), belt(0, 1, 'S'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore'], [1, 0, 'bar']]), 0))
+    expect(itemAt(s, 0, 1)).toBe('ore') // diverted to the open S side
+    expect(itemAt(s, 1, 0)).toBe('bar') // blocked E side unchanged
+  })
+
+  it('holds its item when every output side is blocked (back-pressure)', () => {
+    const machines = worldOf(splitter(0, 0, 'E')) // no neighbours to receive
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0))
+    expect(itemAt(s, 0, 0)).toBe('ore') // nowhere to go → stays
+  })
+})
