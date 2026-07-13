@@ -1,7 +1,7 @@
 import { worldToScreen, screenToWorld, type Camera } from './camera'
 import type { SpriteCache } from './sprites'
 import type { Dir, MachineKind } from '../game/types'
-import { dirAngle, dirDelta } from '../game/world'
+import { dirAngle, dirDelta, nextDir } from '../game/world'
 
 /** A machine to draw, in integer world-cell coordinates. */
 export interface RenderTile {
@@ -88,8 +88,14 @@ export function renderScene(
     } else {
       drawPlaceholder(ctx, sx, sy, spriteSize)
     }
-    // Non-belt machines get a chevron on the output edge to show orientation.
-    drawChevron(ctx, sx, sy, cell, t.dir)
+    // Non-belt machines get a chevron on the output edge to show orientation. A
+    // splitter emits from its three non-input sides, so it gets a chevron on each.
+    if (t.kind === 'splitter') {
+      const cw = nextDir(t.dir)
+      for (const d of [t.dir, cw, nextDir(nextDir(cw))]) drawChevron(ctx, sx, sy, cell, d)
+    } else {
+      drawChevron(ctx, sx, sy, cell, t.dir)
+    }
   }
 
   // Items ride on top of the belt cells, drawn a little smaller.

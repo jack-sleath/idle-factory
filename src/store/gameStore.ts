@@ -37,6 +37,8 @@ export interface GameState {
   buffers: Map<string, MachineBuffer>
   /** Storage contents for storage cells: cell key `x,y` → {item, count}. */
   stores: Map<string, StorageState>
+  /** Round-robin cursors for splitter cells: cell key `x,y` → next side index. */
+  splitterCursors: Map<string, number>
   /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
   money: number
   /** Stock-market state: prices, last-10 histories, and last update time. */
@@ -184,6 +186,7 @@ export const useGameStore = create<GameState>((set, get) => {
       items: new Map(),
       buffers: new Map(),
       stores: nextStores,
+      splitterCursors: new Map(),
       money: save.money,
       market: save.market ?? seedMarket(Date.now()),
       savedAt: save.savedAt,
@@ -201,6 +204,7 @@ export const useGameStore = create<GameState>((set, get) => {
     items: new Map(),
     buffers: new Map(),
     stores,
+    splitterCursors: new Map(),
     money,
     market,
     online: true,
@@ -262,7 +266,7 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, items, buffers, stores, selected } = get()
+      const { world: w, chunks: c, items, buffers, stores, splitterCursors, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
@@ -271,6 +275,7 @@ export const useGameStore = create<GameState>((set, get) => {
       items.delete(key)
       buffers.delete(key)
       stores.delete(key)
+      splitterCursors.delete(key)
       if (selected && selected.x === cx && selected.y === cy) {
         set({ selected: null })
       }
@@ -320,6 +325,7 @@ export const useGameStore = create<GameState>((set, get) => {
         money: result.money,
         items: new Map(), // in-flight belt items vanish across a time skip
         buffers: new Map(),
+        splitterCursors: new Map(),
         savedAt: now,
         lastAway: worthShowing ? result.summary : get().lastAway,
       })
@@ -329,13 +335,14 @@ export const useGameStore = create<GameState>((set, get) => {
     dismissAway: () => set({ lastAway: null }),
 
     advanceTick: () => {
-      const { world: w, items, buffers, stores, money, market, online, tick } = get()
+      const { world: w, items, buffers, stores, splitterCursors, money, market, online, tick } = get()
       const nextSim = step({
         machines: w,
         items,
         buffers,
         stores,
         sellerBuffers: EMPTY_SELLER_BUFFERS, // live play sells online; never buffers
+        splitterCursors,
         money,
         prices: priceSnapshot(market),
         online,
@@ -345,6 +352,7 @@ export const useGameStore = create<GameState>((set, get) => {
         items: nextSim.items,
         buffers: nextSim.buffers,
         stores: nextSim.stores,
+        splitterCursors: nextSim.splitterCursors ?? new Map(),
         money: nextSim.money,
         tick: nextSim.tick,
       })

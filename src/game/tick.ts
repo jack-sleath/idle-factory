@@ -1,5 +1,5 @@
 import type { Dir, Machine } from './types'
-import { cellKey, dirDelta } from './world'
+import { cellKey, dirDelta, nextDir } from './world'
 import { basePrice, CATALOG_BY_ID, combinerOutput, processorOutput, storageCapacity } from '../data'
 import { config } from '../data/config'
 
@@ -25,6 +25,13 @@ import { config } from '../data/config'
 // pointing into it, and while it holds stock it offers one item per tick out of
 // its facing side. A belt (or processor, combiner, seller, another storage)
 // placed on that side pulls the stockpile back out, so chests can be chained.
+//
+// A splitter carries a single item (like a belt) pulled in from directly behind
+// it (opposite its facing). It offers that item out of its three non-input sides
+// — forward, and the two perpendiculars — in round-robin order, so a saturated
+// input fans out evenly across whichever of those sides have a willing consumer.
+// Sides with nothing to receive them are skipped, and the rotation only advances
+// when the item actually leaves.
 
 /** Internal item storage for a processing machine (processor/combiner). */
 export interface MachineBuffer {
@@ -62,6 +69,12 @@ export interface SimState {
   prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
   online: boolean
+  /**
+   * cell key → round-robin cursor (0..2) for splitter cells, indexing the next
+   * output side to try. Transient like `items`/`buffers`; absent maps default to
+   * 0, so it need not be seeded or persisted.
+   */
+  splitterCursors?: Map<string, number>
   /** Monotonic tick counter. */
   tick: number
 }
@@ -80,6 +93,14 @@ const INCOMING: { dx: number; dy: number; out: Dir }[] = [
 /** A combiner's two input sides (slot 0, slot 1), given its output direction. */
 function inputDirs(outputDir: Dir): [Dir, Dir] {
   return outputDir === 'E' || outputDir === 'W' ? ['N', 'S'] : ['E', 'W']
+}
+
+// A splitter takes input from directly behind (opposite `dir`) and offers its
+// item out of the other three sides. This is the fixed rotation order the
+// round-robin cursor walks: forward, then clockwise, then anticlockwise.
+function splitterOutputOrder(dir: Dir): [Dir, Dir, Dir] {
+  const cw = nextDir(dir)
+  return [dir, cw, nextDir(nextDir(cw))]
 }
 
 /** Whether a spawner is due to emit on a given tick. */
@@ -104,6 +125,7 @@ function combine(a: string, b: string): string {
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
   const { machines, items, buffers, stores, sellerBuffers, prices, online } = state
+  const splitterCursors = state.splitterCursors ?? new Map<string, number>()
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
 
@@ -113,6 +135,7 @@ export function step(state: SimState): SimState {
     if (!m) return false
     switch (m.kind) {
       case 'belt':
+      case 'splitter':
         return items.has(key)
       case 'spawner':
         return spawnerDue(m, tick)
@@ -132,6 +155,7 @@ export function step(state: SimState): SimState {
     if (!m) return undefined
     switch (m.kind) {
       case 'belt':
+      case 'splitter':
         return items.get(key)
       case 'spawner':
         return CATALOG_BY_ID[m.catalogId]?.outputItem
@@ -145,6 +169,13 @@ export function step(state: SimState): SimState {
     }
   }
 
+  // The side a machine at `key` is currently emitting out of. For most kinds
+  // that is simply their fixed facing; a splitter's varies per tick with its
+  // round-robin choice (null when it has nothing to send or every side is
+  // blocked), so all feeder matching goes through here rather than `m.dir`.
+  const sourceOutDir = (m: Machine, key: string): Dir | null =>
+    m.kind === 'splitter' ? splitterChosenDir(key) : m.dir
+
   // The single winning source that will feed target cell (tx,ty) this tick, by
   // fixed N,E,S,W priority among neighbours that point in and are ready. Used for
   // any single-input sink (belt, storage, seller).
@@ -152,7 +183,7 @@ export function step(state: SimState): SimState {
     for (const nb of INCOMING) {
       const key = cellKey(tx + nb.dx, ty + nb.dy)
       const m = machines.get(key)
-      if (!m || m.dir !== nb.out) continue
+      if (!m || sourceOutDir(m, key) !== nb.out) continue
       if (readyToEmit(key)) return key
     }
     return null
@@ -164,7 +195,7 @@ export function step(state: SimState): SimState {
     const { dx, dy } = dirDelta(OPPOSITE[m.dir])
     const key = cellKey(m.x + dx, m.y + dy)
     const nb = machines.get(key)
-    return nb && nb.dir === m.dir && readyToEmit(key) ? key : null
+    return nb && sourceOutDir(nb, key) === m.dir && readyToEmit(key) ? key : null
   }
 
   // A combiner's slot-`slot` feeder: the neighbour on that input side, pointing
@@ -174,7 +205,7 @@ export function step(state: SimState): SimState {
     const { dx, dy } = dirDelta(sideDir)
     const key = cellKey(m.x + dx, m.y + dy)
     const nb = machines.get(key)
-    return nb && nb.dir === OPPOSITE[sideDir] && readyToEmit(key) ? key : null
+    return nb && sourceOutDir(nb, key) === OPPOSITE[sideDir] && readyToEmit(key) ? key : null
   }
 
   const combinerSlotForFeeder = (m: Machine, fromKey: string): 0 | 1 | -1 => {
@@ -189,6 +220,43 @@ export function step(state: SimState): SimState {
   const emitMemo = new Map<string, boolean>()
   const inProgress = new Set<string>()
 
+  // Memoized round-robin resolution for a splitter: the output side its held
+  // item will leave through this tick, or null if it has no item or every
+  // candidate side is blocked. Sides are tried from the cursor onward and the
+  // first whose neighbour accepts wins. While a side is under test,
+  // `chosenInProgress` holds it so that a downstream acceptance check which loops
+  // back through this splitter (via winningFeeder → sourceOutDir) sees the same
+  // facing instead of recursing forever.
+  const chosenMemo = new Map<string, Dir | null>()
+  const chosenInProgress = new Map<string, Dir>()
+
+  function splitterChosenDir(key: string): Dir | null {
+    const memo = chosenMemo.get(key)
+    if (memo !== undefined) return memo
+    const tentative = chosenInProgress.get(key)
+    if (tentative !== undefined) return tentative
+    const m = machines.get(key)
+    if (!m || !items.has(key)) {
+      chosenMemo.set(key, null)
+      return null
+    }
+    const order = splitterOutputOrder(m.dir)
+    const start = splitterCursors.get(key) ?? 0
+    for (let i = 0; i < order.length; i++) {
+      const side = order[(start + i) % order.length]
+      chosenInProgress.set(key, side)
+      const { dx, dy } = dirDelta(side)
+      const ok = accepts(cellKey(m.x + dx, m.y + dy), key)
+      chosenInProgress.delete(key)
+      if (ok) {
+        chosenMemo.set(key, side)
+        return side
+      }
+    }
+    chosenMemo.set(key, null)
+    return null
+  }
+
   function willEmit(key: string): boolean {
     const memo = emitMemo.get(key)
     if (memo !== undefined) return memo
@@ -196,10 +264,13 @@ export function step(state: SimState): SimState {
       emitMemo.set(key, false)
       return false
     }
+    const m = machines.get(key)!
+    // Splitters resolve their own emission via the round-robin scan above, which
+    // is separately memoized; keep them out of the emitMemo/inProgress path.
+    if (m.kind === 'splitter') return splitterChosenDir(key) != null
     if (inProgress.has(key)) return false // cycle guard: undecided → treat as staying
     inProgress.add(key)
 
-    const m = machines.get(key)!
     const { dx, dy } = dirDelta(m.dir)
     const result = accepts(cellKey(m.x + dx, m.y + dy), key)
 
@@ -234,6 +305,12 @@ export function step(state: SimState): SimState {
         // Room now, or a full store whose own emission clears a slot this tick.
         return count < storageCapacity(tm.catalogId) || willEmit(targetKey)
       }
+      case 'splitter': {
+        // A splitter only draws from directly behind it; it has room when it is
+        // empty, or its current item leaves this tick to free the cell.
+        if (backFeeder(tm) !== fromKey) return false
+        return !items.has(targetKey) || willEmit(targetKey)
+      }
       case 'seller':
         // A seller always consumes its winning feeder's item: online it is banked
         // on build, offline it is buffered (M9) so nothing is lost while away.
@@ -263,6 +340,7 @@ export function step(state: SimState): SimState {
   const nextBuffers = new Map<string, MachineBuffer>()
   const nextStores = new Map<string, StorageState>()
   const nextSellerBuffers = new Map<string, Record<string, number>>(sellerBuffers)
+  const nextSplitterCursors = new Map<string, number>()
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink `key`.
@@ -280,6 +358,26 @@ export function step(state: SimState): SimState {
         const incoming = arrivingItem(m.x, m.y)
         if (incoming !== undefined) value = incoming
         if (value !== undefined) nextItems.set(key, value)
+        break
+      }
+      case 'splitter': {
+        const chosen = splitterChosenDir(key)
+        const emits = chosen != null
+        // Keep the held item unless it leaves; a cleared splitter may take a new
+        // one from behind this same tick (matching the belt hand-off).
+        let value = items.has(key) && !emits ? items.get(key) : undefined
+        const feeder = backFeeder(m)
+        if (feeder && willEmit(feeder)) value = emittedValue(feeder) ?? value
+        if (value !== undefined) nextItems.set(key, value)
+        // Advance the cursor past the side just used so the next item prefers a
+        // different side; otherwise carry the current cursor forward unchanged.
+        const cursor = splitterCursors.get(key) ?? 0
+        if (emits) {
+          const order = splitterOutputOrder(m.dir)
+          nextSplitterCursors.set(key, (order.indexOf(chosen) + 1) % order.length)
+        } else if (cursor !== 0) {
+          nextSplitterCursors.set(key, cursor)
+        }
         break
       }
       case 'processor': {
@@ -350,6 +448,7 @@ export function step(state: SimState): SimState {
     buffers: nextBuffers,
     stores: nextStores,
     sellerBuffers: nextSellerBuffers,
+    splitterCursors: nextSplitterCursors,
     money,
     prices,
     online,

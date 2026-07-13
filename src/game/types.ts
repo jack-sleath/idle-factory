@@ -4,7 +4,14 @@
 export type Dir = 'N' | 'E' | 'S' | 'W'
 
 /** The kinds of machine that can exist in the world. */
-export type MachineKind = 'spawner' | 'belt' | 'processor' | 'combiner' | 'storage' | 'seller'
+export type MachineKind =
+  | 'spawner'
+  | 'belt'
+  | 'processor'
+  | 'combiner'
+  | 'storage'
+  | 'seller'
+  | 'splitter'
 
 /**
  * A placed machine. Keyed in the world by its cell (`x,y`). `dir` is the
