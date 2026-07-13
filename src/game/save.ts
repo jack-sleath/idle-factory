@@ -1,14 +1,16 @@
 import type { Camera } from '../render/camera'
 import type { Machine } from './types'
 import type { Market } from './market'
+import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 
 // Versioned save schema + localStorage read/write. v1 (M2) held layout + camera;
-// v2 (M5) added the bank balance and per-storage contents; v3 (M7) adds market
-// state. In-transit belt items and processor/combiner buffers are deliberately
-// not persisted (they are cheap, transient, and cleared on offline catch-up in
-// M9). Parsing tolerates older saves by filling new fields with defaults (money
-// 0, no stores, no market), so v1/v2 saves still load.
+// v2 (M5) added the bank balance and per-storage contents; v3 (M7) added market
+// state; v4 (recipe expansion) overhauled the item/catalog set. In-transit belt
+// items and processor/combiner buffers are deliberately not persisted (they are
+// cheap, transient, and cleared on offline catch-up in M9). Parsing tolerates
+// older saves by filling new fields with defaults, and `migrateSave` upgrades
+// them so an old layout keeps its machines and money after a content change.
 
 export const SAVE_KEY = 'idle-factory/save'
 
@@ -73,10 +75,33 @@ export function parseSave(raw: string): GameSave | null {
   }
 }
 
+// Catalog ids that were renamed across a content change; map old -> new so a
+// placed machine survives instead of turning into an unknown tile.
+const CATALOG_RENAMES: Record<string, string> = { 'deep-miner': 'diamond-deposit' }
+
+/**
+ * Upgrade a parsed save to the current schema. Older saves predate the item /
+ * catalog overhaul, so we: remap renamed machine catalog ids (dropping any that
+ * no longer exist), reseed the market (it is keyed by the old item set), and
+ * prune storage locked to items that no longer exist. Layout and money are kept.
+ */
+export function migrateSave(save: GameSave): GameSave {
+  if (save.version >= config.saveVersion) return save
+  const machines = save.machines
+    .map((m) => {
+      const catalogId = CATALOG_RENAMES[m.catalogId] ?? m.catalogId
+      return catalogId === m.catalogId ? m : { ...m, catalogId }
+    })
+    .filter((m) => CATALOG_BY_ID[m.catalogId] !== undefined)
+  const stores = save.stores.filter((s) => s.item === null || ITEMS_BY_ID[s.item] !== undefined)
+  return { ...save, version: config.saveVersion, machines, stores, market: null }
+}
+
 export function loadSave(): GameSave | null {
   if (typeof localStorage === 'undefined') return null
   const raw = localStorage.getItem(SAVE_KEY)
-  return raw ? parseSave(raw) : null
+  const save = raw ? parseSave(raw) : null
+  return save ? migrateSave(save) : null
 }
 
 export function writeSave(save: GameSave): void {

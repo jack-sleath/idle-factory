@@ -6,8 +6,8 @@ import type { Camera } from '../render/camera'
 // data/catalog.json. Some fields are consumed by later milestones (market,
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
-  /** Save schema version (bumped when the persisted shape changes). */
-  saveVersion: 3,
+  /** Save schema version (bumped when the persisted shape or item set changes). */
+  saveVersion: 4,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,

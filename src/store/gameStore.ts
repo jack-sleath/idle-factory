@@ -13,7 +13,7 @@ import {
 import { CATALOG_BY_ID } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
-import { loadSave, makeSave, parseSave, writeSave, type GameSave } from '../game/save'
+import { loadSave, makeSave, migrateSave, parseSave, writeSave, type GameSave } from '../game/save'
 import { step, type MachineBuffer, type StorageState } from '../game/tick'
 import { catchUpMarket, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 import { computeOffline, type AwaySummary } from '../game/offline'
@@ -368,7 +368,7 @@ export const useGameStore = create<GameState>((set, get) => {
     importSave: (json) => {
       const save = parseSave(json)
       if (!save) return false
-      applySave(save)
+      applySave(migrateSave(save)) // upgrade an older imported save before applying
       get().saveNow() // persist the imported state as the new autosave
       return true
     },
