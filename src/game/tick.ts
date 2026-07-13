@@ -20,6 +20,11 @@ import { config } from '../data/config'
 // sides, and once both are filled emits the combined output (order-independent),
 // again holding if blocked. Any input a processor can't transform, or any pair a
 // combiner can't combine, becomes the configured "junk" item.
+//
+// Storage is both a sink and a source: it accepts items from any neighbour
+// pointing into it, and while it holds stock it offers one item per tick out of
+// its facing side. A belt (or processor, combiner, seller, another storage)
+// placed on that side pulls the stockpile back out, so chests can be chained.
 
 /** Internal item storage for a processing machine (processor/combiner). */
 export interface MachineBuffer {
@@ -114,8 +119,10 @@ export function step(state: SimState): SimState {
       case 'processor':
       case 'combiner':
         return buf(key)?.out != null
+      case 'storage':
+        return (stores.get(key)?.count ?? 0) > 0
       default:
-        return false // storage/seller are not emitters (M5)
+        return false // sellers only consume
     }
   }
 
@@ -131,6 +138,8 @@ export function step(state: SimState): SimState {
       case 'processor':
       case 'combiner':
         return buf(key)?.out ?? undefined
+      case 'storage':
+        return stores.get(key)?.item ?? undefined
       default:
         return undefined
     }
@@ -222,7 +231,8 @@ export function step(state: SimState): SimState {
         const locked = store?.item ?? null
         if (locked !== null && locked !== incoming) return false // wrong type → reject
         const count = store?.count ?? 0
-        return count < storageCapacity(tm.catalogId)
+        // Room now, or a full store whose own emission clears a slot this tick.
+        return count < storageCapacity(tm.catalogId) || willEmit(targetKey)
       }
       case 'seller':
         // A seller always consumes its winning feeder's item: online it is banked
@@ -306,11 +316,13 @@ export function step(state: SimState): SimState {
         const store = stores.get(key)
         let item = store?.item ?? null
         let count = store?.count ?? 0
+        if (willEmit(key)) count -= 1 // one item pulled out of the facing side
         const incoming = arrivingItem(m.x, m.y)
         if (incoming !== undefined) {
           item = item ?? incoming // lock onto the first type received
           count += 1
         }
+        // Drained empty → drop the entry, clearing the type lock (as Sell-All does).
         if (item !== null && count > 0) nextStores.set(key, { item, count })
         break
       }

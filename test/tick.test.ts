@@ -269,6 +269,99 @@ describe('storage (M5)', () => {
   })
 })
 
+describe('storage output (chest chaining)', () => {
+  it('emits one stored item per tick onto a belt on its facing side', () => {
+    const machines = worldOf(storage(0, 0, 'E'), belt(1, 0, 'E'), belt(2, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'ore', count: 3 }]])
+    let s = step(mkState(machines, new Map(), 0, new Map(), { stores }))
+    expect(itemAt(s, 1, 0)).toBe('ore')
+    expect(storeAt(s, 0, 0)).toEqual({ item: 'ore', count: 2 })
+
+    s = step(s)
+    expect(itemAt(s, 1, 0)).toBe('ore') // next unit right behind the first
+    expect(itemAt(s, 2, 0)).toBe('ore')
+    expect(storeAt(s, 0, 0)).toEqual({ item: 'ore', count: 1 })
+  })
+
+  it('chains storage → belt → storage, moving the stockpile across', () => {
+    const machines = worldOf(storage(0, 0, 'E'), belt(1, 0, 'E'), storage(2, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'ore', count: 2 }]])
+    let s = mkState(machines, new Map(), 0, new Map(), { stores })
+    for (let i = 0; i < 3; i++) s = step(s)
+    expect(storeAt(s, 0, 0)).toBeUndefined() // fully drained
+    expect(storeAt(s, 2, 0)).toEqual({ item: 'ore', count: 2 }) // fully received
+    expect(s.items.size).toBe(0) // nothing left in transit, nothing lost
+  })
+
+  it('holds its stock when nothing in front accepts (no machine / jammed belt)', () => {
+    // No machine on the facing side.
+    const alone = worldOf(storage(0, 0, 'E'))
+    const s1 = step(mkState(alone, new Map(), 0, new Map(), {
+      stores: storesOf([[0, 0, { item: 'ore', count: 3 }]]),
+    }))
+    expect(storeAt(s1, 0, 0)).toEqual({ item: 'ore', count: 3 })
+
+    // Facing belt is jammed (its item has nowhere to go) → back-pressure.
+    const jammed = worldOf(storage(0, 0, 'E'), belt(1, 0, 'E'))
+    const s2 = step(mkState(jammed, itemsOf([[1, 0, 'diamond']]), 0, new Map(), {
+      stores: storesOf([[0, 0, { item: 'ore', count: 3 }]]),
+    }))
+    expect(storeAt(s2, 0, 0)).toEqual({ item: 'ore', count: 3 })
+    expect(itemAt(s2, 1, 0)).toBe('diamond') // jam unchanged
+    expect(s2.items.size).toBe(1)
+  })
+
+  it('clears its type lock once drained empty, then locks onto a new type', () => {
+    // milk waits behind a storage holding one last ore, which drains out front.
+    const machines = worldOf(belt(-1, 0, 'E'), storage(0, 0, 'E'), belt(1, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'ore', count: 1 }]])
+    let s = step(mkState(machines, itemsOf([[-1, 0, 'milk']]), 0, new Map(), { stores }))
+    expect(itemAt(s, 1, 0)).toBe('ore') // last unit emitted
+    expect(storeAt(s, 0, 0)).toBeUndefined() // empty → lock cleared
+    expect(itemAt(s, -1, 0)).toBe('milk') // rejected while still ore-locked
+
+    s = step(s)
+    expect(storeAt(s, 0, 0)).toEqual({ item: 'milk', count: 1 }) // relocked
+  })
+
+  it('passes items through at full capacity when draining (no overflow, no loss)', () => {
+    const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'), belt(2, 0, 'E'))
+    const stores = storesOf([[1, 0, { item: 'ore', count: 500 }]])
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0, new Map(), { stores }))
+    expect(storeAt(s, 1, 0)?.count).toBe(500) // one out, one in
+    expect(itemAt(s, 2, 0)).toBe('ore') // emitted downstream
+    expect(itemAt(s, 0, 0)).toBeUndefined() // consumed off the feeding belt
+    expect(s.items.size).toBe(1)
+  })
+
+  it('feeds a seller directly, selling one unit per tick', () => {
+    const machines = worldOf(storage(0, 0, 'E'), seller(1, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'diamond', count: 2 }]])
+    const s = step(mkState(machines, new Map(), 0, new Map(), { stores, money: 0 }))
+    expect(s.money).toBe(50) // diamond base price
+    expect(storeAt(s, 0, 0)).toEqual({ item: 'diamond', count: 1 })
+  })
+
+  it('feeds a processor from behind like a belt would', () => {
+    const machines = worldOf(storage(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'ore', count: 1 }]])
+    const s = step(mkState(machines, new Map(), 0, new Map(), { stores }))
+    expect(bufAt(s, 1, 0)?.in[0]).toBe('ore') // pulled into the processor
+    expect(storeAt(s, 0, 0)).toBeUndefined()
+  })
+
+  it('deadlocks safely when two full storages face each other (no dupes or loss)', () => {
+    const machines = worldOf(storage(0, 0, 'E'), storage(1, 0, 'W'))
+    const stores = storesOf([
+      [0, 0, { item: 'ore', count: 500 }],
+      [1, 0, { item: 'ore', count: 500 }],
+    ])
+    const s = step(mkState(machines, new Map(), 0, new Map(), { stores }))
+    expect(storeAt(s, 0, 0)?.count).toBe(500)
+    expect(storeAt(s, 1, 0)?.count).toBe(500)
+  })
+})
+
 describe('sellers (M5)', () => {
   it('credits money at the item base price for each item consumed while online', () => {
     // belt(diamond) → seller; diamond base price is 50.
