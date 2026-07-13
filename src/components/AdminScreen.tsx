@@ -7,15 +7,19 @@ const MACHINE_IDS = ['processor-basic', 'combiner-basic', 'seller-basic', 'belt-
 
 type Category = 'price' | 'cost' | 'rateTicks'
 
-/** Slider range + step for a field, derived from its default so it scales sensibly. */
+/** Min + step for a field, derived from its default. Max is dynamic (see Tuner). */
 function bounds(kind: Category, def: number) {
-  if (kind === 'rateTicks') return { min: 1, max: Math.max(20, Math.ceil(def * 3)), step: 1 }
-  const max = Math.max(10, Math.ceil(def * 4))
+  if (kind === 'rateTicks') return { min: 1, step: 1, floor: 2 }
   const step = def >= 100 ? 5 : def >= 10 ? 1 : 0.1
-  return { min: 0, max, step }
+  return { min: 0, step, floor: 1 }
 }
 
-/** A label + drag slider + number box, all bound to one value. */
+/**
+ * A label + drag slider + number box, all bound to one value. The slider's max
+ * tracks 4× the current value and re-scales when you release the drag (or leave
+ * the number box): raising the value grows the range, lowering it shrinks it, so
+ * the handle always lands with headroom to push further.
+ */
 function Tuner({
   label,
   kind,
@@ -29,7 +33,9 @@ function Tuner({
   value: number
   onChange: (n: number) => void
 }) {
-  const { min, max, step } = bounds(kind, def)
+  const { min, step, floor } = bounds(kind, def)
+  const [max, setMax] = useState(() => Math.max(4 * def, floor))
+  const rescale = () => setMax(Math.max(4 * value, floor))
   return (
     <label className="admin__row">
       <span className="admin__rowLabel" title={label}>
@@ -43,6 +49,8 @@ function Tuner({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        onPointerUp={rescale}
+        onKeyUp={rescale}
       />
       <input
         type="number"
@@ -50,6 +58,7 @@ function Tuner({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        onBlur={rescale}
       />
     </label>
   )
