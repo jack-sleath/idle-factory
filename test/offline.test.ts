@@ -70,6 +70,38 @@ describe('offline storage accrual', () => {
     expect(a?.count).toBe(500) // upstream backs up once the tail is full
     expect(r.summary.stockpiled).toContainEqual({ item: 'ore', count: 1000 })
   })
+
+  it('fills a chain linked through an intermediate belt', () => {
+    // gatherer -> belt -> storage A (2,0) -> belt (3,0) -> storage B (4,0).
+    // The storages are not adjacent; the feed runs through a belt.
+    const chain = worldOf(
+      gatherer(0, 0, 'E'),
+      belt(1, 0, 'E'),
+      storage(2, 0, 'E'),
+      belt(3, 0, 'E'),
+      storage(4, 0, 'E'),
+    )
+    const r = computeOffline(
+      { machines: chain, stores: new Map(), market: seedMarket(NOW), money: 0, savedAt: 0 },
+      NOW,
+      steady,
+    )
+    expect(r.stores.get(cellKey(4, 0))?.count).toBe(500) // downstream tail
+    expect(r.stores.get(cellKey(2, 0))?.count).toBe(500) // upstream backs up
+  })
+
+  it('does not fill a storage that only drains into a seller', () => {
+    // gatherer -> belt -> storage (2,0) -> seller (3,0). The storage is drained as
+    // fast as it fills, so it should stay empty and the seller earns instead.
+    const drained = worldOf(gatherer(0, 0, 'E'), belt(1, 0, 'E'), storage(2, 0, 'E'), seller(3, 0, 'E'))
+    const r = computeOffline(
+      { machines: drained, stores: new Map(), market: marketWith({ ore: 1 }), money: 0, savedAt: NOW - HOUR },
+      NOW,
+      steady,
+    )
+    expect(r.stores.get(cellKey(2, 0))).toBeUndefined() // pass-through to seller stays empty
+    expect(r.summary.earned).toBeGreaterThan(0)
+  })
 })
 
 describe('offline seller earnings', () => {

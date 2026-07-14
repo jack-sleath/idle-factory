@@ -1,9 +1,9 @@
-import type { Machine } from './types'
+import type { Dir, Machine } from './types'
 import { step, type SimState, type StorageState } from './tick'
 import { catchUpMarket, livePrice, type Market, type Rng } from './market'
 import { storageCapacity } from '../data'
 import { config } from '../data/config'
-import { cellKey, dirDelta } from './world'
+import { cellKey, dirDelta, nextDir } from './world'
 
 // Offline idle progression (M9). While the tab/browser is closed the factory
 // should keep stockpiling (and auto-sellers keep earning), but we must not
@@ -37,6 +37,45 @@ export interface OfflineInput {
 }
 
 const MS_PER_HOUR = 3_600_000
+
+const OPPOSITE: Record<Dir, Dir> = { N: 'S', S: 'N', E: 'W', W: 'E' }
+
+/** A combiner's two input sides, given its output direction. Mirrors tick.ts. */
+function combinerInputDirs(dir: Dir): [Dir, Dir] {
+  return dir === 'E' || dir === 'W' ? ['N', 'S'] : ['E', 'W']
+}
+
+/** The sides a machine offers items out of. Mirrors tick.ts movement rules. */
+function outputDirs(m: Machine): Dir[] {
+  if (m.kind === 'seller') return []
+  if (m.kind === 'splitter') {
+    // Behind (opposite dir) is the input; it offers out the other three sides.
+    const cw = nextDir(m.dir)
+    return [m.dir, cw, nextDir(nextDir(cw))]
+  }
+  return [m.dir] // belt / processor / combiner / storage / spawner emit out their facing
+}
+
+/**
+ * Whether the machine `m` accepts an item travelling in direction `incoming`
+ * (i.e. entering from its `OPPOSITE[incoming]` side). Mirrors the per-kind input
+ * rules in tick.ts so flow tracing only follows edges the simulation would.
+ */
+function acceptsFrom(m: Machine, incoming: Dir): boolean {
+  switch (m.kind) {
+    case 'belt':
+    case 'storage':
+    case 'seller':
+      return true // accept a neighbour pointing in from any side
+    case 'processor':
+    case 'splitter':
+      return incoming === m.dir // only from directly behind → same travel direction
+    case 'combiner':
+      return combinerInputDirs(m.dir).includes(OPPOSITE[incoming]) // either input side
+    default:
+      return false // spawner and anything else never receive
+  }
+}
 
 /** Compute the state after being away from `savedAt` until `now`. Pure. */
 export function computeOffline(input: OfflineInput, now: number, rng: Rng): OfflineResult {
@@ -72,17 +111,24 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
   const baseSeller = new Map<string, Record<string, number>>()
   for (const [key, buf] of sim.sellerBuffers) baseSeller.set(key, { ...buf })
 
-  for (let i = 0; i < sampleTicks; i++) sim = step(sim)
+  // A pass-through storage may be empty at the exact end of the sample, so record
+  // the item type each storage held at any point during the window (its lock).
+  const observedItem = new Map<string, string>()
+  for (const [key, st] of sim.stores) if (st.item) observedItem.set(key, st.item)
+  for (let i = 0; i < sampleTicks; i++) {
+    sim = step(sim)
+    for (const [key, st] of sim.stores) if (st.item) observedItem.set(key, st.item)
+  }
 
-  // Extrapolate storage per CHAIN, not per isolated storage. When storages are
-  // chained (one facing directly into another), the upstream ones are pass-through
-  // during the sample: they receive and immediately re-emit downstream, so their
-  // net delta is ~0 and only the tail shows accrual. Extrapolating each in
-  // isolation would leave every upstream chest empty (bug: "only the second one
-  // fills"). Instead we sum the sampled net delta across each chain — that sum is
-  // the whole chain's true intake rate (internal hand-offs cancel) — then fill the
-  // chain from its downstream tail backward, letting overflow back up into the
-  // upstream chests exactly as back-pressure would over the real elapsed time.
+  // Extrapolate storage per CHAIN, not per isolated storage. When a storage feeds
+  // another storage — directly, or through belts/splitters/processors/combiners —
+  // the upstream one is a pass-through during the sample: it receives and re-emits
+  // downstream, so its net delta is ~0 and only the tail accrues. Extrapolating
+  // each in isolation would leave every upstream chest empty (bug: "only the
+  // second one fills"). Instead we sum the sampled net delta across each chain —
+  // that sum is the chain's true intake rate (internal hand-offs cancel) — then
+  // fill the chain from its downstream tail backward, letting overflow back up
+  // into the upstream chests exactly as back-pressure would over the elapsed time.
   const nextStores = new Map(input.stores)
   const stockpiledByItem: Record<string, number> = {}
 
@@ -92,17 +138,36 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
   const sampledDelta = (key: string) =>
     (sim.stores.get(key)?.count ?? 0) - (baseStore.get(key) ?? 0)
 
-  // Directed edge key→downstream: a storage feeds the storage directly ahead of
-  // its facing side (that is the side it offers its stockpile out of).
-  const downstream = new Map<string, string>()
+  // Directed edges: which storages does `key` feed? Trace the item leaving its
+  // facing side forward through transport/transform machines (belts, splitters,
+  // processors, combiners) until it reaches other storages. Sellers and dead ends
+  // terminate a branch. Only hops the simulation would actually make are followed.
+  const downstream = new Map<string, Set<string>>()
   for (const key of storageKeys) {
-    const m = input.machines.get(key)!
-    const { dx, dy } = dirDelta(m.dir)
-    const target = cellKey(m.x + dx, m.y + dy)
-    if (input.machines.get(target)?.kind === 'storage') downstream.set(key, target)
+    const targets = new Set<string>()
+    const src = input.machines.get(key)!
+    const visited = new Set<string>() // transport cells already expanded (cycle guard)
+    const stack: { x: number; y: number; dir: Dir }[] = []
+    for (const dir of outputDirs(src)) stack.push({ x: src.x, y: src.y, dir })
+    while (stack.length) {
+      const { x, y, dir } = stack.pop()!
+      const { dx, dy } = dirDelta(dir)
+      const nkey = cellKey(x + dx, y + dy)
+      const nm = input.machines.get(nkey)
+      if (!nm || !acceptsFrom(nm, dir)) continue
+      if (nm.kind === 'storage') {
+        if (nkey !== key) targets.add(nkey) // reached another chest → chain edge
+        continue // a storage is a chain boundary; don't trace through it
+      }
+      if (nm.kind === 'seller') continue // drains the line; not a storage edge
+      if (visited.has(nkey)) continue
+      visited.add(nkey)
+      for (const out of outputDirs(nm)) stack.push({ x: nm.x, y: nm.y, dir: out })
+    }
+    if (targets.size) downstream.set(key, targets)
   }
 
-  // Group storages into connected chains (treating the feed edges as undirected).
+  // Group storages into connected chains (feed edges treated as undirected).
   const chainOf = new Map<string, number>()
   const chains: string[][] = []
   for (const key of storageKeys) {
@@ -114,10 +179,10 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
     while (queue.length) {
       const cur = queue.pop()!
       members.push(cur)
-      const neighbours = [downstream.get(cur)]
-      for (const [from, to] of downstream) if (to === cur) neighbours.push(from)
+      const neighbours: string[] = [...(downstream.get(cur) ?? [])]
+      for (const [from, tos] of downstream) if (tos.has(cur)) neighbours.push(from)
       for (const nb of neighbours) {
-        if (nb && !chainOf.has(nb)) {
+        if (!chainOf.has(nb)) {
           chainOf.set(nb, id)
           queue.push(nb)
         }
@@ -129,33 +194,30 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
   for (const members of chains) {
     // The chain's net intake = sum of member deltas (internal transfers cancel).
     let deltaSum = 0
-    let sampledItem: string | null = null
-    for (const key of members) {
-      deltaSum += sampledDelta(key)
-      sampledItem = sampledItem ?? sim.stores.get(key)?.item ?? null
-    }
-    if (deltaSum <= 0 || sampledItem == null) continue
+    for (const key of members) deltaSum += sampledDelta(key)
+    if (deltaSum <= 0) continue
     let remaining = Math.floor((deltaSum / sampleMs) * elapsed)
     if (remaining <= 0) continue
 
     // Fill downstream-tail first, then upstream: physically items reach the tail
-    // and only back up once it is full. Order = reverse-topological (a member goes
-    // before the member it feeds is impossible, so tails — whose downstream is
-    // outside the chain — come first, walking upstream via the reverse edges).
+    // and only back up once it is full. Order = reverse-topological — a member
+    // whose downstream chests are all already placed (or lead outside the chain)
+    // comes next, walking upstream via the feed edges.
     const pending = new Set(members)
     const order: string[] = []
     while (pending.size) {
       let progressed = false
       for (const key of pending) {
-        const down = downstream.get(key)
-        if (down == null || !pending.has(down)) {
+        const downs = downstream.get(key)
+        const blocked = downs && [...downs].some((d) => pending.has(d))
+        if (!blocked) {
           order.push(key)
           pending.delete(key)
           progressed = true
         }
       }
       if (!progressed) {
-        // Cyclic layout (chests facing each other): fall back to arbitrary order.
+        // Cyclic layout (chests feeding each other): fall back to arbitrary order.
         for (const key of pending) order.push(key)
         pending.clear()
       }
@@ -163,14 +225,15 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
 
     for (const key of order) {
       const real = input.stores.get(key)
-      if (real?.item != null && real.item !== sampledItem) continue // locked to another type
+      const item = real?.item ?? observedItem.get(key) ?? null
+      if (item == null) continue // never held anything in the sample → no lock
       const capacity = storageCapacity(input.machines.get(key)?.catalogId ?? '')
       const current = real?.count ?? 0
       const room = Math.max(0, capacity - current)
       const gained = Math.min(remaining, room)
       if (gained <= 0) continue
-      nextStores.set(key, { item: sampledItem, count: current + gained })
-      stockpiledByItem[sampledItem] = (stockpiledByItem[sampledItem] ?? 0) + gained
+      nextStores.set(key, { item, count: current + gained })
+      stockpiledByItem[item] = (stockpiledByItem[item] ?? 0) + gained
       remaining -= gained
       if (remaining <= 0) break
     }
