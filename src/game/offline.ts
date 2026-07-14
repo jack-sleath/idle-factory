@@ -3,6 +3,7 @@ import { step, type SimState, type StorageState } from './tick'
 import { catchUpMarket, livePrice, type Market, type Rng } from './market'
 import { storageCapacity } from '../data'
 import { config } from '../data/config'
+import { cellKey, dirDelta } from './world'
 
 // Offline idle progression (M9). While the tab/browser is closed the factory
 // should keep stockpiling (and auto-sellers keep earning), but we must not
@@ -73,23 +74,106 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
 
   for (let i = 0; i < sampleTicks; i++) sim = step(sim)
 
-  // Extrapolate storage: each storage gains rate×elapsed, clamped to the real
-  // remaining capacity and only when the sampled item matches its lock.
+  // Extrapolate storage per CHAIN, not per isolated storage. When storages are
+  // chained (one facing directly into another), the upstream ones are pass-through
+  // during the sample: they receive and immediately re-emit downstream, so their
+  // net delta is ~0 and only the tail shows accrual. Extrapolating each in
+  // isolation would leave every upstream chest empty (bug: "only the second one
+  // fills"). Instead we sum the sampled net delta across each chain — that sum is
+  // the whole chain's true intake rate (internal hand-offs cancel) — then fill the
+  // chain from its downstream tail backward, letting overflow back up into the
+  // upstream chests exactly as back-pressure would over the real elapsed time.
   const nextStores = new Map(input.stores)
   const stockpiledByItem: Record<string, number> = {}
-  for (const [key, st] of sim.stores) {
-    const delta = st.count - (baseStore.get(key) ?? 0)
-    if (delta <= 0 || !st.item) continue
-    const real = input.stores.get(key)
-    if (real?.item != null && real.item !== st.item) continue // locked to another type
-    const capacity = storageCapacity(input.machines.get(key)?.catalogId ?? '')
-    const current = real?.count ?? 0
-    const room = Math.max(0, capacity - current)
-    const gained = Math.min(Math.floor((delta / sampleMs) * elapsed), room)
-    if (gained <= 0) continue
-    const item = real?.item ?? st.item
-    nextStores.set(key, { item, count: current + gained })
-    stockpiledByItem[item] = (stockpiledByItem[item] ?? 0) + gained
+
+  const storageKeys: string[] = []
+  for (const [key, m] of input.machines) if (m.kind === 'storage') storageKeys.push(key)
+
+  const sampledDelta = (key: string) =>
+    (sim.stores.get(key)?.count ?? 0) - (baseStore.get(key) ?? 0)
+
+  // Directed edge key→downstream: a storage feeds the storage directly ahead of
+  // its facing side (that is the side it offers its stockpile out of).
+  const downstream = new Map<string, string>()
+  for (const key of storageKeys) {
+    const m = input.machines.get(key)!
+    const { dx, dy } = dirDelta(m.dir)
+    const target = cellKey(m.x + dx, m.y + dy)
+    if (input.machines.get(target)?.kind === 'storage') downstream.set(key, target)
+  }
+
+  // Group storages into connected chains (treating the feed edges as undirected).
+  const chainOf = new Map<string, number>()
+  const chains: string[][] = []
+  for (const key of storageKeys) {
+    if (chainOf.has(key)) continue
+    const id = chains.length
+    const members: string[] = []
+    const queue = [key]
+    chainOf.set(key, id)
+    while (queue.length) {
+      const cur = queue.pop()!
+      members.push(cur)
+      const neighbours = [downstream.get(cur)]
+      for (const [from, to] of downstream) if (to === cur) neighbours.push(from)
+      for (const nb of neighbours) {
+        if (nb && !chainOf.has(nb)) {
+          chainOf.set(nb, id)
+          queue.push(nb)
+        }
+      }
+    }
+    chains.push(members)
+  }
+
+  for (const members of chains) {
+    // The chain's net intake = sum of member deltas (internal transfers cancel).
+    let deltaSum = 0
+    let sampledItem: string | null = null
+    for (const key of members) {
+      deltaSum += sampledDelta(key)
+      sampledItem = sampledItem ?? sim.stores.get(key)?.item ?? null
+    }
+    if (deltaSum <= 0 || sampledItem == null) continue
+    let remaining = Math.floor((deltaSum / sampleMs) * elapsed)
+    if (remaining <= 0) continue
+
+    // Fill downstream-tail first, then upstream: physically items reach the tail
+    // and only back up once it is full. Order = reverse-topological (a member goes
+    // before the member it feeds is impossible, so tails — whose downstream is
+    // outside the chain — come first, walking upstream via the reverse edges).
+    const pending = new Set(members)
+    const order: string[] = []
+    while (pending.size) {
+      let progressed = false
+      for (const key of pending) {
+        const down = downstream.get(key)
+        if (down == null || !pending.has(down)) {
+          order.push(key)
+          pending.delete(key)
+          progressed = true
+        }
+      }
+      if (!progressed) {
+        // Cyclic layout (chests facing each other): fall back to arbitrary order.
+        for (const key of pending) order.push(key)
+        pending.clear()
+      }
+    }
+
+    for (const key of order) {
+      const real = input.stores.get(key)
+      if (real?.item != null && real.item !== sampledItem) continue // locked to another type
+      const capacity = storageCapacity(input.machines.get(key)?.catalogId ?? '')
+      const current = real?.count ?? 0
+      const room = Math.max(0, capacity - current)
+      const gained = Math.min(remaining, room)
+      if (gained <= 0) continue
+      nextStores.set(key, { item: sampledItem, count: current + gained })
+      stockpiledByItem[sampledItem] = (stockpiledByItem[sampledItem] ?? 0) + gained
+      remaining -= gained
+      if (remaining <= 0) break
+    }
   }
 
   // Extrapolate sellers: sell the extrapolated buffer once at the caught-up price.
