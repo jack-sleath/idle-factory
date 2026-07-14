@@ -16,7 +16,8 @@
     { "in": "corn", "out": "popcorn" },
     { "in": "potato", "out": "fries" },
     { "in": "sugarcane", "out": "sugar" },
-    { "in": "grapes", "out": "wine" }
+    { "in": "grapes", "out": "wine" },
+    { "in": "dough", "out": "pie-case" }
   ],
   "combiner": [
     { "a": "silver-ring", "b": "sapphire", "out": "silver-sapphire-ring" },
@@ -44,11 +45,15 @@
     { "a": "planks", "b": "bar", "out": "axe" },
     { "a": "planks", "b": "wool", "out": "bed" },
 
+    { "a": "water", "b": "wheat", "out": "dough" },
+
     { "a": "tomato", "b": "cheese", "out": "pizza" },
     { "a": "strawberry", "b": "sugar", "out": "jam" },
-    { "a": "apple", "b": "sugar", "out": "apple-pie" },
-    { "a": "pumpkin", "b": "sugar", "out": "pumpkin-pie" },
     { "a": "carrot", "b": "sugar", "out": "carrot-cake" },
-    { "a": "milk", "b": "sugar", "out": "ice-cream" }
+    { "a": "milk", "b": "sugar", "out": "ice-cream" },
+
+    { "a": "pie-case", "b": "apple", "out": "apple-pie" },
+    { "a": "pie-case", "b": "pumpkin", "out": "pumpkin-pie" },
+    { "a": "pie-case", "b": "strawberry", "out": "strawberry-pie" }
   ]
 }

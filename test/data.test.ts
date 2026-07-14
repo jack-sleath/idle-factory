@@ -1,9 +1,24 @@
 import { describe, it, expect } from 'vitest'
 import { validateData } from '../src/data/validate'
+import { combinerOutput, processorOutput } from '../src/data'
 
 describe('game data integrity', () => {
   it('has no broken item references in catalog or recipes', () => {
     // If this fails, the message lists exactly which id is unknown or malformed.
     expect(validateData()).toEqual([])
+  })
+})
+
+describe('pie production chain', () => {
+  it('turns water + wheat into dough, then dough into a pie case', () => {
+    expect(combinerOutput('water', 'wheat')).toBe('dough')
+    expect(combinerOutput('wheat', 'water')).toBe('dough') // order-independent
+    expect(processorOutput('dough')).toBe('pie-case')
+  })
+
+  it('combines a pie case with a fruit/veg into the matching pie', () => {
+    expect(combinerOutput('pie-case', 'apple')).toBe('apple-pie')
+    expect(combinerOutput('pie-case', 'pumpkin')).toBe('pumpkin-pie')
+    expect(combinerOutput('pie-case', 'strawberry')).toBe('strawberry-pie')
   })
 })
