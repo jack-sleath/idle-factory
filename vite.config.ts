@@ -1,6 +1,20 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { assertDataValid } from './src/data/validate'
+
+// Fail the build (and dev server startup) if the content JSON has a broken
+// reference — a recipe/spawner pointing at an item id that doesn't exist, a
+// missing junk item, etc. This turns previously-silent data typos into a loud
+// error. See src/data/validate.ts.
+function validateGameData(): Plugin {
+  return {
+    name: 'validate-game-data',
+    buildStart() {
+      assertDataValid()
+    },
+  }
+}
 
 // Served at the root of the custom domain auto-exportica.jack-sleath.dev
 // (see public/CNAME), so the base path is '/'. All runtime asset URLs derive
@@ -11,6 +25,7 @@ const BASE = '/'
 export default defineConfig({
   base: BASE,
   plugins: [
+    validateGameData(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

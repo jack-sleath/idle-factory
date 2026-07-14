@@ -168,9 +168,13 @@ How they're consumed:
   stalls on unknown input — it just produces worthless junk.
 
 Gotchas:
-- Every `in` / `out` / `a` / `b` id **must exist in `items.json`**. There's no
-  build-time validation linking the two files — a typo silently produces junk
-  (for a bad input) or an item that never renders (for a bad output).
+- Every `in` / `out` / `a` / `b` id **must exist in `items.json`**. This is
+  enforced by `validateData()` (`src/data/validate.ts`), which runs at build
+  time (a Vite plugin in `vite.config.ts`) and in the test suite
+  (`test/data.test.ts`) — a bad reference fails the build with a clear message
+  instead of silently producing junk (bad input) or an unrenderable item (bad
+  output). The same check covers catalog `outputItem` ids, duplicate item/
+  catalog ids, the `junk` item, and spawner/storage completeness.
 - Processor recipes can chain (`ore→bar`, then `bar→ring`); that's fine and
   expected — just place two processors in series.
 - No quantity/ratio support: recipes are strictly 1→1 and 2→1, one item per
@@ -204,6 +208,8 @@ Run `npm run test`. Engine behaviour is covered headlessly (no browser):
 - `test/tick.test.ts` — the simulation: spawning, belt movement, back-pressure,
   processor/combiner transforms, junk fallback, storage, splitter round-robin.
 - `test/save.test.ts` — parse/migrate round-trips.
+- `test/data.test.ts` — content integrity: asserts `validateData()` finds no
+  broken item references (see the recipe section above).
 - `test/market.test.ts`, `test/offline.test.ts`, `test/economy.test.ts`,
   `test/scaling.test.ts`, `test/store.test.ts` — the rest.
 
