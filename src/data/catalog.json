@@ -102,6 +102,96 @@
     "rateTicks": 5
   },
   {
+    "id": "corn-field",
+    "kind": "spawner",
+    "name": "Corn Field",
+    "emoji": "🌽",
+    "cost": 40,
+    "defaultDir": "E",
+    "outputItem": "corn",
+    "rateTicks": 5
+  },
+  {
+    "id": "potato-farm",
+    "kind": "spawner",
+    "name": "Potato Farm",
+    "emoji": "🥔",
+    "cost": 40,
+    "defaultDir": "E",
+    "outputItem": "potato",
+    "rateTicks": 5
+  },
+  {
+    "id": "tomato-plant",
+    "kind": "spawner",
+    "name": "Tomato Plant",
+    "emoji": "🍅",
+    "cost": 45,
+    "defaultDir": "E",
+    "outputItem": "tomato",
+    "rateTicks": 5
+  },
+  {
+    "id": "carrot-patch",
+    "kind": "spawner",
+    "name": "Carrot Patch",
+    "emoji": "🥕",
+    "cost": 40,
+    "defaultDir": "E",
+    "outputItem": "carrot",
+    "rateTicks": 5
+  },
+  {
+    "id": "sugarcane-field",
+    "kind": "spawner",
+    "name": "Sugarcane Field",
+    "emoji": "🎋",
+    "cost": 50,
+    "defaultDir": "E",
+    "outputItem": "sugarcane",
+    "rateTicks": 6
+  },
+  {
+    "id": "grape-vine",
+    "kind": "spawner",
+    "name": "Grape Vine",
+    "emoji": "🍇",
+    "cost": 70,
+    "defaultDir": "E",
+    "outputItem": "grapes",
+    "rateTicks": 7
+  },
+  {
+    "id": "apple-orchard",
+    "kind": "spawner",
+    "name": "Apple Orchard",
+    "emoji": "🍎",
+    "cost": 70,
+    "defaultDir": "E",
+    "outputItem": "apple",
+    "rateTicks": 7
+  },
+  {
+    "id": "strawberry-patch",
+    "kind": "spawner",
+    "name": "Strawberry Patch",
+    "emoji": "🍓",
+    "cost": 70,
+    "defaultDir": "E",
+    "outputItem": "strawberry",
+    "rateTicks": 7
+  },
+  {
+    "id": "pumpkin-patch",
+    "kind": "spawner",
+    "name": "Pumpkin Patch",
+    "emoji": "🎃",
+    "cost": 90,
+    "defaultDir": "E",
+    "outputItem": "pumpkin",
+    "rateTicks": 8
+  },
+  {
     "id": "silver-mine",
     "kind": "spawner",
     "name": "Silver Mine",

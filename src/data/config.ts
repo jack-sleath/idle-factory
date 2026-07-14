@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 5,
+  saveVersion: 6,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,

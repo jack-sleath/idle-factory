@@ -11,7 +11,12 @@
     { "in": "log", "out": "planks" },
     { "in": "planks", "out": "stick" },
     { "in": "wool", "out": "string" },
-    { "in": "wheat", "out": "bread" }
+    { "in": "wheat", "out": "bread" },
+
+    { "in": "corn", "out": "popcorn" },
+    { "in": "potato", "out": "fries" },
+    { "in": "sugarcane", "out": "sugar" },
+    { "in": "grapes", "out": "wine" }
   ],
   "combiner": [
     { "a": "silver-ring", "b": "sapphire", "out": "silver-sapphire-ring" },
@@ -37,6 +42,13 @@
     { "a": "stick", "b": "diamond", "out": "diamond-sword" },
     { "a": "stick", "b": "string", "out": "bow" },
     { "a": "planks", "b": "bar", "out": "axe" },
-    { "a": "planks", "b": "wool", "out": "bed" }
+    { "a": "planks", "b": "wool", "out": "bed" },
+
+    { "a": "tomato", "b": "cheese", "out": "pizza" },
+    { "a": "strawberry", "b": "sugar", "out": "jam" },
+    { "a": "apple", "b": "sugar", "out": "apple-pie" },
+    { "a": "pumpkin", "b": "sugar", "out": "pumpkin-pie" },
+    { "a": "carrot", "b": "sugar", "out": "carrot-cake" },
+    { "a": "milk", "b": "sugar", "out": "ice-cream" }
   ]
 }
