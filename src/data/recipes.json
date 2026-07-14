@@ -47,6 +47,12 @@
 
     { "a": "water", "b": "wheat", "out": "dough" },
 
+    { "a": "water", "b": "sugar", "out": "lemonade" },
+    { "a": "water", "b": "apple", "out": "apple-juice" },
+    { "a": "water", "b": "grapes", "out": "grape-juice" },
+    { "a": "water", "b": "carrot", "out": "carrot-juice" },
+    { "a": "water", "b": "strawberry", "out": "smoothie" },
+
     { "a": "tomato", "b": "cheese", "out": "pizza" },
     { "a": "strawberry", "b": "sugar", "out": "jam" },
     { "a": "carrot", "b": "sugar", "out": "carrot-cake" },
