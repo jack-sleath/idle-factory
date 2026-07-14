@@ -102,6 +102,16 @@
     "rateTicks": 5
   },
   {
+    "id": "well",
+    "kind": "spawner",
+    "name": "Well",
+    "emoji": "🪣",
+    "cost": 30,
+    "defaultDir": "E",
+    "outputItem": "water",
+    "rateTicks": 4
+  },
+  {
     "id": "corn-field",
     "kind": "spawner",
     "name": "Corn Field",

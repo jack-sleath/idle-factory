@@ -21,6 +21,7 @@
   {"id": "string", "name": "String", "emoji": "🧵", "startingValue": 5},
   {"id": "wheat", "name": "Wheat", "emoji": "🌾", "startingValue": 2},
   {"id": "bread", "name": "Bread", "emoji": "🍞", "startingValue": 6},
+  {"id": "water", "name": "Water", "emoji": "💧", "startingValue": 1},
   {"id": "corn", "name": "Corn", "emoji": "🌽", "startingValue": 2},
   {"id": "tomato", "name": "Tomato", "emoji": "🍅", "startingValue": 2},
   {"id": "potato", "name": "Potato", "emoji": "🥔", "startingValue": 2},
