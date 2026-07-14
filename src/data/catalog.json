@@ -62,6 +62,14 @@
     "defaultDir": "E"
   },
   {
+    "id": "village-hut",
+    "kind": "village",
+    "name": "Village Hut",
+    "emoji": "🏘️",
+    "cost": 200,
+    "defaultDir": "E"
+  },
+  {
     "id": "cow",
     "kind": "spawner",
     "name": "Cow",

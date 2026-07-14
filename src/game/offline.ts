@@ -72,6 +72,8 @@ function acceptsFrom(m: Machine, incoming: Dir): boolean {
       return incoming === m.dir // only from directly behind → same travel direction
     case 'combiner':
       return combinerInputDirs(m.dir).includes(OPPOSITE[incoming]) // either input side
+    case 'village':
+      return incoming !== OPPOSITE[m.dir] // accept on the three non-output (input) sides
     default:
       return false // spawner and anything else never receive
   }

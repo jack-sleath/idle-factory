@@ -41,6 +41,17 @@ export function validateData(): string[] {
     errors.push(`config.junkItemId "${config.junkItemId}" is not a defined item`)
   }
 
+  // The Village Hut recipe must be satisfiable: its output and bed item must
+  // exist, and at least one food and one drink item must exist to feed it.
+  const vr = config.villageRecipe
+  if (!known(vr.output)) errors.push(`villageRecipe output "${vr.output}" is not a defined item`)
+  if (!known(vr.bed)) errors.push(`villageRecipe bed "${vr.bed}" is not a defined item`)
+  for (const cat of [vr.food, vr.drink]) {
+    if (!ITEMS.some((i) => i.category === cat)) {
+      errors.push(`villageRecipe needs at least one "${cat}" item to exist`)
+    }
+  }
+
   for (const entry of CATALOG) {
     if (entry.kind === 'spawner') {
       if (!entry.outputItem) {

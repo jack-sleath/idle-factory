@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 9,
+  saveVersion: 10,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,
@@ -31,6 +31,19 @@ export const config = {
 
   /** Item id produced as the fallback "junk" output (M4). */
   junkItemId: 'junk',
+
+  /**
+   * Village Hut recipe (villager production). The hut consumes one item matching
+   * each input requirement — `food`/`drink` by item category, `bed` by exact id —
+   * and emits `output`. Category-gated: a non-matching item on an input side is
+   * rejected (it back-pressures) rather than being turned into junk.
+   */
+  villageRecipe: {
+    food: 'food',
+    drink: 'drink',
+    bed: 'bed',
+    output: 'villager',
+  },
 
   /** Offline catch-up cap, applied to both market and production (M9). */
   maxOfflineHours: 24,

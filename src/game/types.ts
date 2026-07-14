@@ -12,6 +12,7 @@ export type MachineKind =
   | 'storage'
   | 'seller'
   | 'splitter'
+  | 'village'
 
 /**
  * A placed machine. Keyed in the world by its cell (`x,y`). `dir` is the
@@ -38,7 +39,7 @@ export interface Machine {
  * finished goods that fit nothing else (furniture, junk). The canonical list
  * lives here so the `ItemCategory` union and `validateData()` stay in sync.
  */
-export const ITEM_CATEGORIES = ['food', 'drink', 'valuable', 'weapon', 'material', 'misc'] as const
+export const ITEM_CATEGORIES = ['food', 'drink', 'valuable', 'weapon', 'material', 'villager', 'misc'] as const
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number]
 
 /** An item type definition (from data/items.json). */

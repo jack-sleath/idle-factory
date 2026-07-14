@@ -12,6 +12,7 @@ const CATEGORY_META: Record<ItemCategory, { label: string; emoji: string }> = {
   valuable: { label: 'Valuables', emoji: '💎' },
   weapon: { label: 'Weapons', emoji: '⚔️' },
   material: { label: 'Materials', emoji: '🧱' },
+  villager: { label: 'Villagers', emoji: '🧑' },
   misc: { label: 'Misc', emoji: '📦' },
 }
 
