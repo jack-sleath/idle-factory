@@ -60,6 +60,11 @@
 
     { "a": "pie-case", "b": "apple", "out": "apple-pie" },
     { "a": "pie-case", "b": "pumpkin", "out": "pumpkin-pie" },
-    { "a": "pie-case", "b": "strawberry", "out": "strawberry-pie" }
+    { "a": "pie-case", "b": "strawberry", "out": "strawberry-pie" },
+
+    { "a": "pie-case", "b": "sugar", "out": "sweet-pie-case" },
+    { "a": "sweet-pie-case", "b": "apple", "out": "sweet-apple-pie" },
+    { "a": "sweet-pie-case", "b": "pumpkin", "out": "sweet-pumpkin-pie" },
+    { "a": "sweet-pie-case", "b": "strawberry", "out": "sweet-strawberry-pie" }
   ]
 }

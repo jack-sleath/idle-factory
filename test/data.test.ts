@@ -21,6 +21,13 @@ describe('pie production chain', () => {
     expect(combinerOutput('pie-case', 'pumpkin')).toBe('pumpkin-pie')
     expect(combinerOutput('pie-case', 'strawberry')).toBe('strawberry-pie')
   })
+
+  it('sweetens a pie case with sugar, then bakes premium sweet pies', () => {
+    expect(combinerOutput('pie-case', 'sugar')).toBe('sweet-pie-case')
+    expect(combinerOutput('sweet-pie-case', 'apple')).toBe('sweet-apple-pie')
+    expect(combinerOutput('sweet-pie-case', 'pumpkin')).toBe('sweet-pumpkin-pie')
+    expect(combinerOutput('sweet-pie-case', 'strawberry')).toBe('sweet-strawberry-pie')
+  })
 })
 
 describe('drinks', () => {
