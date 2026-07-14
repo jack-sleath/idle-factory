@@ -36,13 +36,20 @@ An "item" is anything that rides a belt (raw resource, intermediate, product,
 or junk). Items are defined once in `src/data/items.json`:
 
 ```json
-{ "id": "cheese", "name": "Cheese", "emoji": "🧀", "startingValue": 6 }
+{ "id": "cheese", "name": "Cheese", "emoji": "🧀", "category": "food", "startingValue": 6 }
 ```
 
 Field meaning (see `ItemDef` in `src/game/types.ts`):
 - `id` — unique string key; referenced by catalog `outputItem` and by recipes.
 - `name` / `emoji` — display only. The emoji is the sprite (rasterized
   automatically by `src/render/sprites.ts`; nothing else to register).
+- `category` — one of `ITEM_CATEGORIES` (`food`, `drink`, `valuable`,
+  `weapon`, `material`, `misc`); groups items in the market/shop UI.
+  `validateData()` rejects an unknown value. Rule of thumb: `material` is
+  anything whose only value is as an in-between production step (ores, bars,
+  wood, textile, wheat/sugarcane/sugar, dough, pie cases); raw things that are
+  food/treasure in their own right keep that identity (an apple is `food`, a
+  diamond is `valuable`); `misc` is the catch-all (furniture, junk).
 - `startingValue` — base sale price; also the market's reset/crash-to value,
   **and** the anchor its crash band is derived from. The market floor/ceiling
   are `startingValue × config.crashFloorMultiple` / `crashCeilingMultiple`

@@ -1,11 +1,37 @@
 import { describe, it, expect } from 'vitest'
 import { validateData } from '../src/data/validate'
-import { combinerOutput, processorOutput } from '../src/data'
+import { combinerOutput, ITEMS, ITEMS_BY_ID, processorOutput } from '../src/data'
+import { ITEM_CATEGORIES } from '../src/game/types'
 
 describe('game data integrity', () => {
   it('has no broken item references in catalog or recipes', () => {
     // If this fails, the message lists exactly which id is unknown or malformed.
     expect(validateData()).toEqual([])
+  })
+})
+
+describe('item categories', () => {
+  it('gives every item a known category', () => {
+    const known = new Set<string>(ITEM_CATEGORIES)
+    for (const item of ITEMS) expect(known.has(item.category)).toBe(true)
+  })
+
+  it('categorizes by role: in-betweens are material, raw food/treasure keep identity', () => {
+    const c = (id: string) => ITEMS_BY_ID[id].category
+    // Non-edible-until-processed crops and intermediates are material…
+    expect(c('wheat')).toBe('material')
+    expect(c('sugarcane')).toBe('material')
+    expect(c('ore')).toBe('material')
+    expect(c('gold-bar')).toBe('material')
+    expect(c('dough')).toBe('material')
+    expect(c('pie-case')).toBe('material')
+    // …while raw items that are food/treasure in their own right keep identity.
+    expect(c('apple')).toBe('food')
+    expect(c('diamond')).toBe('valuable')
+    expect(c('gold-diamond-amulet')).toBe('valuable')
+    expect(c('water')).toBe('drink')
+    expect(c('diamond-sword')).toBe('weapon')
+    expect(c('bed')).toBe('misc')
   })
 })
 

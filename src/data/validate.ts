@@ -1,4 +1,5 @@
 import { CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
+import { ITEM_CATEGORIES } from '../game/types'
 import { config } from './config'
 
 // Referential-integrity check over the content JSON (items / catalog / recipes).
@@ -25,6 +26,14 @@ export function validateData(): string[] {
   }
   dupes(ITEMS.map((i) => i.id), 'item')
   dupes(CATALOG.map((c) => c.id), 'catalog')
+
+  // Every item must carry a known category (used to group the market/shop UI).
+  const categories = new Set<string>(ITEM_CATEGORIES)
+  for (const item of ITEMS) {
+    if (!categories.has(item.category)) {
+      errors.push(`item "${item.id}" has unknown category "${item.category}"`)
+    }
+  }
 
   // The junk fallback item must exist; the tick engine emits it for any
   // un-matched processor/combiner transform.
