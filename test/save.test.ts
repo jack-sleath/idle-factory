@@ -88,6 +88,7 @@ describe('migrateSave (content-change upgrade)', () => {
         { key: '2,0', item: 'gem', count: 10 }, // removed item → pruned
         { key: '3,0', item: 'ore', count: 5 }, // survives
       ],
+      townHalls: [],
       market: { lastUpdate: 0, items: { gem: { price: 9, history: [9], crashed: false } } },
     }
     const m = migrateSave(old)

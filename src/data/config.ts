@@ -45,6 +45,30 @@ export const config = {
     output: 'villager',
   },
 
+  /**
+   * Per-villager economic effect when banked in a Town Hall. Each is a
+   * per-unit rate applied to the summed population across all town halls (see
+   * `computeTownModifiers` in `src/game/town.ts`):
+   *  - villager  → generic sell-price boost (untyped, small)
+   *  - merchant  → sell-price boost
+   *  - guard     → market-volatility reduction (steadier prices)
+   *  - innkeeper → offline-earnings boost
+   *  - mason     → machine build-cost reduction
+   *  - farmer    → higher crash ceiling for `food`
+   *  - miner     → higher crash ceiling for `material`/`valuable`
+   */
+  townLevers: {
+    villager: 0.005,
+    merchant: 0.02,
+    guard: 0.01,
+    innkeeper: 0.05,
+    mason: 0.01,
+    farmer: 0.02,
+    miner: 0.02,
+  },
+  /** Floors for the reduction levers, so they can't drive a factor to zero. */
+  townLeverFloors: { volatility: 0.25, buildCost: 0.25 },
+
   /** Offline catch-up cap, applied to both market and production (M9). */
   maxOfflineHours: 24,
   /** Length of the headless production sampling window (M9). */

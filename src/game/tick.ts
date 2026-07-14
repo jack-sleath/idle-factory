@@ -48,6 +48,9 @@ export interface StorageState {
   count: number
 }
 
+/** A town hall's banked villagers, keyed by villager item id → count consumed. */
+export type TownHallState = Record<string, number>
+
 /** The simulation state. `machines` is read-only; the rest is rebuilt per tick. */
 export interface SimState {
   machines: Map<string, Machine>
@@ -57,6 +60,8 @@ export interface SimState {
   buffers: Map<string, MachineBuffer>
   /** cell key → contents, for storage cells only (M5). */
   stores: Map<string, StorageState>
+  /** cell key → banked villagers, for town hall cells only. Persisted. */
+  townHalls: Map<string, TownHallState>
   /**
    * cell key → { itemId: count } consumed by an offline seller (M9). Only
    * written while `online` is false; used by offline catch-up to measure seller
@@ -142,7 +147,7 @@ function combine(a: string, b: string): string {
  */
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
-  const { machines, items, buffers, stores, sellerBuffers, prices, online } = state
+  const { machines, items, buffers, stores, townHalls, sellerBuffers, prices, online } = state
   const splitterCursors = state.splitterCursors ?? new Map<string, number>()
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
@@ -362,6 +367,14 @@ export function step(state: SimState): SimState {
         // A seller always consumes its winning feeder's item: online it is banked
         // on build, offline it is buffered (M9) so nothing is lost while away.
         return winningFeeder(tm.x, tm.y) === fromKey
+      case 'townhall': {
+        // A sink like the seller, but only for villagers: it banks them by type.
+        // A non-villager on its feeder is rejected (back-pressures) instead of
+        // being silently eaten.
+        if (winningFeeder(tm.x, tm.y) !== fromKey) return false
+        const incoming = emittedValue(fromKey)
+        return incoming !== undefined && categoryOf(incoming) === 'villager'
+      }
       default:
         return false
     }
@@ -395,6 +408,10 @@ export function step(state: SimState): SimState {
   const nextItems = new Map<string, string>()
   const nextBuffers = new Map<string, MachineBuffer>()
   const nextStores = new Map<string, StorageState>()
+  // Town halls persist and only grow, so keep the same map reference unless a
+  // villager is actually banked this tick (clone-on-write below). Callers can
+  // cheaply detect "no change" by identity to skip recomputing town bonuses.
+  let nextTownHalls = townHalls
   const nextSellerBuffers = new Map<string, Record<string, number>>(sellerBuffers)
   const nextSplitterCursors = new Map<string, number>()
   let money = state.money
@@ -510,6 +527,17 @@ export function step(state: SimState): SimState {
         }
         break
       }
+      case 'townhall': {
+        // Bank an arriving villager into this hall's per-type tally (clone the
+        // town-halls map on first write so unchanged ticks keep their reference).
+        const incoming = arrivingItem(m.x, m.y)
+        if (incoming !== undefined) {
+          if (nextTownHalls === townHalls) nextTownHalls = new Map(townHalls)
+          const prev = nextTownHalls.get(key) ?? {}
+          nextTownHalls.set(key, { ...prev, [incoming]: (prev[incoming] ?? 0) + 1 })
+        }
+        break
+      }
       // spawner: emits into neighbours but stores nothing itself.
     }
   }
@@ -519,6 +547,7 @@ export function step(state: SimState): SimState {
     items: nextItems,
     buffers: nextBuffers,
     stores: nextStores,
+    townHalls: nextTownHalls,
     sellerBuffers: nextSellerBuffers,
     splitterCursors: nextSplitterCursors,
     money,

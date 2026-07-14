@@ -13,6 +13,7 @@ const combiner = (x: number, y: number, dir: Dir) => machine('combiner', x, y, d
 const storage = (x: number, y: number, dir: Dir) => machine('storage', x, y, dir, 'storage-basic') // capacity 500
 const seller = (x: number, y: number, dir: Dir) => machine('seller', x, y, dir, 'seller-basic')
 const village = (x: number, y: number, dir: Dir) => machine('village', x, y, dir, 'village-hut')
+const townhall = (x: number, y: number, dir: Dir) => machine('townhall', x, y, dir, 'town-hall')
 
 function worldOf(...ms: Machine[]): Map<string, Machine> {
   const w = new Map<string, Machine>()
@@ -39,13 +40,14 @@ function mkState(
   items: Map<string, string>,
   tick: number,
   buffers: Map<string, MachineBuffer> = new Map(),
-  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online' | 'prices' | 'sellerBuffers'>> = {},
+  extra: Partial<Pick<SimState, 'stores' | 'townHalls' | 'money' | 'online' | 'prices' | 'sellerBuffers'>> = {},
 ): SimState {
   return {
     machines,
     items,
     buffers,
     stores: extra.stores ?? new Map(),
+    townHalls: extra.townHalls ?? new Map(),
     sellerBuffers: extra.sellerBuffers ?? new Map(),
     money: extra.money ?? 0,
     prices: extra.prices ?? {},
@@ -281,6 +283,36 @@ describe('village hut (villager production)', () => {
     expect(bufAt(s, 1, 1)?.in.filter(Boolean).sort()).toEqual(['apple', 'lemonade'])
     expect(bufAt(s, 1, 1)?.out ?? null).toBeNull()
     expect(itemAt(s, 2, 1)).toBeUndefined()
+  })
+})
+
+describe('town hall (villager sink)', () => {
+  it('banks an arriving villager into its per-type tally', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'villager']]), 0))
+    expect(s.townHalls.get('1,0')).toEqual({ villager: 1 })
+    expect(s.items.size).toBe(0) // consumed off the belt
+  })
+
+  it('accumulates by type across ticks', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const townHalls = new Map([['1,0', { merchant: 2 }]])
+    const s = step(mkState(machines, itemsOf([[0, 0, 'merchant']]), 0, new Map(), { townHalls }))
+    expect(s.townHalls.get('1,0')).toEqual({ merchant: 3 })
+  })
+
+  it('rejects a non-villager item (it back-pressures, not eaten)', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0))
+    expect(s.townHalls.get('1,0')).toBeUndefined()
+    expect(itemAt(s, 0, 0)).toBe('ore') // held on the belt
+  })
+
+  it('keeps the town-halls map by reference when nothing is banked', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const townHalls = new Map([['1,0', { villager: 1 }]])
+    const s = step(mkState(machines, itemsOf([]), 0, new Map(), { townHalls }))
+    expect(s.townHalls).toBe(townHalls) // clone-on-write: unchanged → same ref
   })
 })
 

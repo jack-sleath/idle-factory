@@ -4,6 +4,7 @@ import { GameCanvas } from './components/GameCanvas'
 import { ActionTools } from './components/ActionTools'
 import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
+import { TownHallPanel } from './components/TownHallPanel'
 import { MarketPanel } from './components/MarketPanel'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
@@ -91,6 +92,7 @@ export default function App() {
         <GameCanvas />
         <ActionTools />
         <StoragePanel />
+        <TownHallPanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
         <AwaySummary />

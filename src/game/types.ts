@@ -13,6 +13,7 @@ export type MachineKind =
   | 'seller'
   | 'splitter'
   | 'village'
+  | 'townhall'
 
 /**
  * A placed machine. Keyed in the world by its cell (`x,y`). `dir` is the

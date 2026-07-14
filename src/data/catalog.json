@@ -70,6 +70,14 @@
     "defaultDir": "E"
   },
   {
+    "id": "town-hall",
+    "kind": "townhall",
+    "name": "Town Hall",
+    "emoji": "🏛️",
+    "cost": 300,
+    "defaultDir": "E"
+  },
+  {
     "id": "cow",
     "kind": "spawner",
     "name": "Cow",

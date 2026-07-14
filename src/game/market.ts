@@ -1,6 +1,7 @@
 import { basePrice, ITEMS, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 import type { ItemDef } from './types'
+import { IDENTITY_TOWN_MODIFIERS, type TownModifiers } from './town'
 
 // Stock market (M7). Each item's price does a geometrically-neutral random walk:
 // every `marketIntervalMinutes` it is multiplied by
@@ -39,13 +40,18 @@ const capMs = () => config.maxOfflineHours * 3_600_000
 
 /**
  * The crash band `[min, max]` for an item, derived from its `startingValue`
- * times the global `crashFloor/CeilingMultiple` knobs. A price that walks to or
- * past either edge crashes back to `startingValue` (see `stepMarket`).
+ * times the global `crashFloor/CeilingMultiple` knobs. Town-hall farmers/miners
+ * can raise the ceiling for a whole category via `modifiers.ceilingMultiplier`.
+ * A price that walks to or past either edge crashes back to `startingValue`.
  */
-export function priceBand(def: Pick<ItemDef, 'startingValue'>): { min: number; max: number } {
+export function priceBand(
+  def: Pick<ItemDef, 'startingValue' | 'category'>,
+  modifiers: TownModifiers = IDENTITY_TOWN_MODIFIERS,
+): { min: number; max: number } {
+  const ceilingBoost = modifiers.ceilingMultiplier[def.category] ?? 1
   return {
     min: def.startingValue * config.crashFloorMultiple,
-    max: def.startingValue * config.crashCeilingMultiple,
+    max: def.startingValue * config.crashCeilingMultiple * ceilingBoost,
   }
 }
 
@@ -112,9 +118,17 @@ export function fillHistory(market: Market, rng: Rng = Math.random): Market {
   return changed ? { lastUpdate: market.lastUpdate, items } : market
 }
 
-/** Advance every price by one neutral random step, applying the crash rule. */
-export function stepMarket(market: Market, rng: Rng): Market {
-  const lnBand = Math.log(1 + config.volatility)
+/**
+ * Advance every price by one neutral random step, applying the crash rule.
+ * Town-hall guards shrink the step (lower volatility) and farmers/miners lift
+ * the crash ceiling per category, both via `modifiers`.
+ */
+export function stepMarket(
+  market: Market,
+  rng: Rng,
+  modifiers: TownModifiers = IDENTITY_TOWN_MODIFIERS,
+): Market {
+  const lnBand = Math.log(1 + config.volatility * modifiers.volatilityMultiplier)
   const items: Record<string, MarketItem> = {}
   for (const id of Object.keys(market.items)) {
     const prev = market.items[id]
@@ -122,7 +136,7 @@ export function stepMarket(market: Market, rng: Rng): Market {
     let price = prev.price * Math.exp((rng() * 2 - 1) * lnBand)
     let crashed = false
     if (def) {
-      const band = priceBand(def)
+      const band = priceBand(def, modifiers)
       if (price <= band.min || price >= band.max) {
         price = def.startingValue // crash → reset to starting value
         crashed = true
@@ -139,12 +153,17 @@ export function stepMarket(market: Market, rng: Rng): Market {
  * capped at `maxOfflineHours`. `lastUpdate` advances by whole intervals only, so
  * the sub-interval remainder is preserved for next time.
  */
-export function catchUpMarket(market: Market, now: number, rng: Rng): Market {
+export function catchUpMarket(
+  market: Market,
+  now: number,
+  rng: Rng,
+  modifiers: TownModifiers = IDENTITY_TOWN_MODIFIERS,
+): Market {
   const elapsed = Math.min(Math.max(0, now - market.lastUpdate), capMs())
   const steps = Math.floor(elapsed / intervalMs())
   if (steps <= 0) return market
   let m = market
-  for (let i = 0; i < steps; i++) m = stepMarket(m, rng)
+  for (let i = 0; i < steps; i++) m = stepMarket(m, rng, modifiers)
   return { lastUpdate: market.lastUpdate + steps * intervalMs(), items: m.items }
 }
 

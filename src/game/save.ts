@@ -3,6 +3,7 @@ import type { Machine } from './types'
 import type { Market } from './market'
 import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
+import { cellKey } from './world'
 
 // Versioned save schema + localStorage read/write. v1 (M2) held layout + camera;
 // v2 (M5) added the bank balance and per-storage contents; v3 (M7) added market
@@ -21,6 +22,12 @@ export interface StoredStorage {
   count: number
 }
 
+/** A town hall's persisted banked villagers, keyed by its cell. */
+export interface StoredTownHall {
+  key: string
+  counts: Record<string, number>
+}
+
 export interface GameSave {
   version: number
   savedAt: number
@@ -28,6 +35,8 @@ export interface GameSave {
   machines: Machine[]
   money: number
   stores: StoredStorage[]
+  /** Persisted town halls (banked villagers); empty for saves predating them. */
+  townHalls: StoredTownHall[]
   /** Persisted market; null for pre-M7 saves (a fresh market is seeded then). */
   market: Market | null
 }
@@ -39,8 +48,9 @@ export function makeSave(
   money = 0,
   stores: StoredStorage[] = [],
   market: Market | null = null,
+  townHalls: StoredTownHall[] = [],
 ): GameSave {
-  return { version: config.saveVersion, savedAt, camera, machines, money, stores, market }
+  return { version: config.saveVersion, savedAt, camera, machines, money, stores, townHalls, market }
 }
 
 /** Loose runtime check that a parsed value looks like a Market. */
@@ -71,6 +81,7 @@ export function parseSave(raw: string): GameSave | null {
     machines: obj.machines as Machine[],
     money: typeof obj.money === 'number' ? obj.money : 0,
     stores: Array.isArray(obj.stores) ? (obj.stores as StoredStorage[]) : [],
+    townHalls: Array.isArray(obj.townHalls) ? (obj.townHalls as StoredTownHall[]) : [],
     market: isMarket(obj.market) ? obj.market : null,
   }
 }
@@ -82,8 +93,10 @@ const CATALOG_RENAMES: Record<string, string> = { 'deep-miner': 'diamond-deposit
 /**
  * Upgrade a parsed save to the current schema. Older saves predate the item /
  * catalog overhaul, so we: remap renamed machine catalog ids (dropping any that
- * no longer exist), reseed the market (it is keyed by the old item set), and
- * prune storage locked to items that no longer exist. Layout and money are kept.
+ * no longer exist), reseed the market (it is keyed by the old item set), prune
+ * storage locked to items that no longer exist, and drop town halls that lost
+ * their machine (pruning any banked villager ids that no longer exist). Layout
+ * and money are kept.
  */
 export function migrateSave(save: GameSave): GameSave {
   if (save.version >= config.saveVersion) return save
@@ -94,7 +107,19 @@ export function migrateSave(save: GameSave): GameSave {
     })
     .filter((m) => CATALOG_BY_ID[m.catalogId] !== undefined)
   const stores = save.stores.filter((s) => s.item === null || ITEMS_BY_ID[s.item] !== undefined)
-  return { ...save, version: config.saveVersion, machines, stores, market: null }
+  // Only keep town halls whose cell still holds a town-hall machine, and drop
+  // banked counts for any villager id that no longer exists.
+  const townHallCells = new Set(
+    machines.filter((m) => m.kind === 'townhall').map((m) => cellKey(m.x, m.y)),
+  )
+  const townHalls = (save.townHalls ?? [])
+    .filter((h) => townHallCells.has(h.key))
+    .map((h) => {
+      const counts: Record<string, number> = {}
+      for (const [id, n] of Object.entries(h.counts)) if (ITEMS_BY_ID[id]) counts[id] = n
+      return { key: h.key, counts }
+    })
+  return { ...save, version: config.saveVersion, machines, stores, townHalls, market: null }
 }
 
 export function loadSave(): GameSave | null {
