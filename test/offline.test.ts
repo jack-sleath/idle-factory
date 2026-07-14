@@ -53,6 +53,55 @@ describe('offline storage accrual', () => {
     )
     expect(r.stores.get(cellKey(2, 0))!.count).toBe(500) // 480 + 20 headroom only
   })
+
+  it('fills BOTH storages when two are chained (not just the downstream one)', () => {
+    // gatherer -> belt -> storage A (2,0) -> storage B (3,0). A feeds B directly.
+    // A is a pass-through during the sample, so its net delta is ~0; the fix must
+    // still back up the chain and fill it once the downstream tail is full.
+    const chain = worldOf(gatherer(0, 0, 'E'), belt(1, 0, 'E'), storage(2, 0, 'E'), storage(3, 0, 'E'))
+    const r = computeOffline(
+      { machines: chain, stores: new Map(), market: seedMarket(NOW), money: 0, savedAt: 0 },
+      NOW, // 24h cap → enough time to top out both chests
+      steady,
+    )
+    const a = r.stores.get(cellKey(2, 0))
+    const b = r.stores.get(cellKey(3, 0))
+    expect(b?.count).toBe(500) // downstream tail fills first
+    expect(a?.count).toBe(500) // upstream backs up once the tail is full
+    expect(r.summary.stockpiled).toContainEqual({ item: 'ore', count: 1000 })
+  })
+
+  it('fills a chain linked through an intermediate belt', () => {
+    // gatherer -> belt -> storage A (2,0) -> belt (3,0) -> storage B (4,0).
+    // The storages are not adjacent; the feed runs through a belt.
+    const chain = worldOf(
+      gatherer(0, 0, 'E'),
+      belt(1, 0, 'E'),
+      storage(2, 0, 'E'),
+      belt(3, 0, 'E'),
+      storage(4, 0, 'E'),
+    )
+    const r = computeOffline(
+      { machines: chain, stores: new Map(), market: seedMarket(NOW), money: 0, savedAt: 0 },
+      NOW,
+      steady,
+    )
+    expect(r.stores.get(cellKey(4, 0))?.count).toBe(500) // downstream tail
+    expect(r.stores.get(cellKey(2, 0))?.count).toBe(500) // upstream backs up
+  })
+
+  it('does not fill a storage that only drains into a seller', () => {
+    // gatherer -> belt -> storage (2,0) -> seller (3,0). The storage is drained as
+    // fast as it fills, so it should stay empty and the seller earns instead.
+    const drained = worldOf(gatherer(0, 0, 'E'), belt(1, 0, 'E'), storage(2, 0, 'E'), seller(3, 0, 'E'))
+    const r = computeOffline(
+      { machines: drained, stores: new Map(), market: marketWith({ ore: 1 }), money: 0, savedAt: NOW - HOUR },
+      NOW,
+      steady,
+    )
+    expect(r.stores.get(cellKey(2, 0))).toBeUndefined() // pass-through to seller stays empty
+    expect(r.summary.earned).toBeGreaterThan(0)
+  })
 })
 
 describe('offline seller earnings', () => {
