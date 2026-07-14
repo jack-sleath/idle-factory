@@ -36,17 +36,19 @@ An "item" is anything that rides a belt (raw resource, intermediate, product,
 or junk). Items are defined once in `src/data/items.json`:
 
 ```json
-{ "id": "cheese", "name": "Cheese", "emoji": "🧀", "startingValue": 6, "minPrice": 0.5, "maxPrice": 250 }
+{ "id": "cheese", "name": "Cheese", "emoji": "🧀", "startingValue": 6 }
 ```
 
 Field meaning (see `ItemDef` in `src/game/types.ts`):
 - `id` — unique string key; referenced by catalog `outputItem` and by recipes.
 - `name` / `emoji` — display only. The emoji is the sprite (rasterized
   automatically by `src/render/sprites.ts`; nothing else to register).
-- `startingValue` — base sale price; also the market's reset/crash-to value.
-- `minPrice` / `maxPrice` — market crash floor/ceiling. When a price walks
-  down to `minPrice` or up to `maxPrice` it "crashes" back to `startingValue`
-  (`src/game/market.ts`).
+- `startingValue` — base sale price; also the market's reset/crash-to value,
+  **and** the anchor its crash band is derived from. The market floor/ceiling
+  are `startingValue × config.crashFloorMultiple` / `crashCeilingMultiple`
+  (global knobs in `src/data/config.ts`); when a price walks down to the floor
+  or up to the ceiling it "crashes" back to `startingValue`. See `priceBand()`
+  in `src/game/market.ts`. Items carry no per-item price band of their own.
 
 What happens automatically once an item exists:
 - **Market**: `seedMarket()` in `src/game/market.ts` iterates `ITEMS`, so every

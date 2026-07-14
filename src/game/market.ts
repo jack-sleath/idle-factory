@@ -1,12 +1,15 @@
 import { basePrice, ITEMS, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
+import type { ItemDef } from './types'
 
 // Stock market (M7). Each item's price does a geometrically-neutral random walk:
 // every `marketIntervalMinutes` it is multiplied by
 //   exp((rand()*2 − 1) · ln(1 + volatility))
 // which lands in ×[1/(1+v), (1+v)] and — because the log-factor is symmetric
-// about 0 — has no systematic up/down drift over the long run. If a price falls
-// to `minPrice` or rises to `maxPrice` it "crashes" back to its starting value.
+// about 0 — has no systematic up/down drift over the long run. Each item's
+// crash band is derived from its `startingValue` times the global
+// `crashFloor/CeilingMultiple` knobs (see `priceBand()`); if a price walks down
+// to the floor or up to the ceiling it "crashes" back to its starting value.
 // A rolling window of the last 10 prices feeds the panel's sparkline. The whole
 // thing is time-driven (not tick-driven): on load we advance by however many
 // intervals have elapsed, capped, so it also powers offline catch-up in M9.
@@ -35,12 +38,24 @@ const intervalMs = () => config.marketIntervalMinutes * 60_000
 const capMs = () => config.maxOfflineHours * 3_600_000
 
 /**
+ * The crash band `[min, max]` for an item, derived from its `startingValue`
+ * times the global `crashFloor/CeilingMultiple` knobs. A price that walks to or
+ * past either edge crashes back to `startingValue` (see `stepMarket`).
+ */
+export function priceBand(def: Pick<ItemDef, 'startingValue'>): { min: number; max: number } {
+  return {
+    min: def.startingValue * config.crashFloorMultiple,
+    max: def.startingValue * config.crashCeilingMultiple,
+  }
+}
+
+/**
  * A fresh market. Each item's current price is its starting value, but its
  * sparkline history is pre-seeded with a full HISTORY_LEN points from a neutral
  * random walk stepped *backwards* from that starting value — so a brand-new (or
  * freshly reset) market shows a real, moving chart instead of a flat line pinned
- * to the base value. The synthetic back-story is clamped to each item's
- * [minPrice, maxPrice] band (no crash resets) so it stays plausible; the newest
+ * to the base value. The synthetic back-story is clamped to each item's crash
+ * band (see `priceBand()`, no crash resets) so it stays plausible; the newest
  * point — the live price — is left exactly at the starting value.
  */
 export function seedMarket(now: number, rng: Rng = Math.random): Market {
@@ -50,10 +65,11 @@ export function seedMarket(now: number, rng: Rng = Math.random): Market {
     // Walk backwards from the starting value, prepending older prices, so the
     // history ends (newest, last) exactly at `startingValue`.
     const history: number[] = [it.startingValue]
+    const band = priceBand(it)
     let price = it.startingValue
     for (let i = 1; i < HISTORY_LEN; i++) {
       price *= Math.exp((rng() * 2 - 1) * lnBand)
-      price = Math.min(Math.max(price, it.minPrice), it.maxPrice)
+      price = Math.min(Math.max(price, band.min), band.max)
       history.unshift(price)
     }
     items[it.id] = { price: it.startingValue, history, crashed: false }
@@ -83,11 +99,12 @@ export function fillHistory(market: Market, rng: Rng = Math.random): Market {
     }
     changed = true
     const def = ITEMS_BY_ID[id]
+    const band = def ? priceBand(def) : null
     const filler: number[] = []
     let price = item.history[0] ?? item.price
     for (let i = item.history.length; i < HISTORY_LEN; i++) {
       price *= Math.exp((rng() * 2 - 1) * lnBand)
-      if (def) price = Math.min(Math.max(price, def.minPrice), def.maxPrice)
+      if (band) price = Math.min(Math.max(price, band.min), band.max)
       filler.unshift(price) // older points accumulate in front, oldest first
     }
     items[id] = { ...item, history: [...filler, ...item.history] }
@@ -104,9 +121,12 @@ export function stepMarket(market: Market, rng: Rng): Market {
     const def = ITEMS_BY_ID[id]
     let price = prev.price * Math.exp((rng() * 2 - 1) * lnBand)
     let crashed = false
-    if (def && (price <= def.minPrice || price >= def.maxPrice)) {
-      price = def.startingValue // crash → reset to starting value
-      crashed = true
+    if (def) {
+      const band = priceBand(def)
+      if (price <= band.min || price >= band.max) {
+        price = def.startingValue // crash → reset to starting value
+        crashed = true
+      }
     }
     const history = [...prev.history, price].slice(-HISTORY_LEN)
     items[id] = { price, history, crashed }

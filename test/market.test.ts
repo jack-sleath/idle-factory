@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { catchUpMarket, fillHistory, seedMarket, stepMarket, type Market, HISTORY_LEN } from '../src/game/market'
+import { catchUpMarket, fillHistory, priceBand, seedMarket, stepMarket, type Market, HISTORY_LEN } from '../src/game/market'
 import { ITEMS_BY_ID } from '../src/data'
 import { config } from '../src/data/config'
 
@@ -31,10 +31,10 @@ describe('seedMarket: pre-seeded history', () => {
   it('clamps synthetic back-story within each item price band', () => {
     const m = seedMarket(0) // default rng; run the walk against real bounds
     for (const id of Object.keys(m.items)) {
-      const def = ITEMS_BY_ID[id]
+      const band = priceBand(ITEMS_BY_ID[id])
       for (const p of m.items[id].history) {
-        expect(p).toBeGreaterThanOrEqual(def.minPrice)
-        expect(p).toBeLessThanOrEqual(def.maxPrice)
+        expect(p).toBeGreaterThanOrEqual(band.min)
+        expect(p).toBeLessThanOrEqual(band.max)
       }
     }
   })
@@ -60,9 +60,10 @@ describe('fillHistory: back-fill short windows', () => {
     const def = ITEMS_BY_ID['ore']
     const m: Market = { lastUpdate: 0, items: { ore: { price: def.startingValue, history: [def.startingValue], crashed: false } } }
     const f = fillHistory(m) // default rng against real bounds
+    const band = priceBand(def)
     for (const p of f.items['ore'].history) {
-      expect(p).toBeGreaterThanOrEqual(def.minPrice)
-      expect(p).toBeLessThanOrEqual(def.maxPrice)
+      expect(p).toBeGreaterThanOrEqual(band.min)
+      expect(p).toBeLessThanOrEqual(band.max)
     }
   })
 })
@@ -95,18 +96,28 @@ describe('stepMarket: neutral random walk', () => {
 })
 
 describe('stepMarket: crash rule', () => {
-  it('resets to the starting value when a price rises to maxPrice', () => {
-    const def = ITEMS_BY_ID['ore'] // start 1, max 50
-    const m = stepMarket(oneItemMarket('ore', def.maxPrice - 2), () => 1) // ×1.2 → over max
+  it('resets to the starting value when a price rises to the ceiling', () => {
+    const def = ITEMS_BY_ID['ore'] // start 1 → band [0.5, 2]
+    const band = priceBand(def)
+    const m = stepMarket(oneItemMarket('ore', band.max - 0.01), () => 1) // ×1.2 → over ceiling
     expect(m.items['ore'].price).toBe(def.startingValue)
     expect(m.items['ore'].crashed).toBe(true)
   })
 
-  it('resets to the starting value when a price falls to minPrice', () => {
-    const def = ITEMS_BY_ID['ore'] // start 1, min 0.1
-    const m = stepMarket(oneItemMarket('ore', def.minPrice + 0.01), () => 0) // ÷1.2 → under min
+  it('resets to the starting value when a price falls to the floor', () => {
+    const def = ITEMS_BY_ID['ore'] // start 1 → band [0.5, 2]
+    const band = priceBand(def)
+    const m = stepMarket(oneItemMarket('ore', band.min + 0.01), () => 0) // ÷1.2 → under floor
     expect(m.items['ore'].price).toBe(def.startingValue)
     expect(m.items['ore'].crashed).toBe(true)
+  })
+
+  it('derives the band from startingValue × the global crash multiples', () => {
+    const def = ITEMS_BY_ID['ore']
+    expect(priceBand(def)).toEqual({
+      min: def.startingValue * config.crashFloorMultiple,
+      max: def.startingValue * config.crashCeilingMultiple,
+    })
   })
 })
 

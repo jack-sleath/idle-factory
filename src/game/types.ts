@@ -34,11 +34,11 @@ export interface ItemDef {
   id: string
   name: string
   emoji: string
-  /** Base/starting market value. */
+  /**
+   * Base/starting market value. Also the crash reset target, and the anchor the
+   * market's crash band is derived from (`config.crashFloor/CeilingMultiple`).
+   */
   startingValue: number
-  /** Market crash floor and ceiling (used from M7). */
-  minPrice: number
-  maxPrice: number
 }
 
 /** A buildable entry in the shop catalog (from data/catalog.json). */

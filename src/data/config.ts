@@ -16,6 +16,15 @@ export const config = {
   marketIntervalMinutes: 5,
   /** Market volatility: factor range is ×[1/(1+v), (1+v)] (M7). */
   volatility: 0.2,
+  /**
+   * Market crash band, expressed as multiples of each item's `startingValue`
+   * (M7). A price crashes back to its starting value when it walks down to
+   * `startingValue * crashFloorMultiple` or up to
+   * `startingValue * crashCeilingMultiple`. Derived globally so items only need
+   * a `startingValue` — see `priceBand()` in `src/game/market.ts`.
+   */
+  crashFloorMultiple: 0.5,
+  crashCeilingMultiple: 2,
 
   /** Starting money for a new game (M6). */
   startingMoney: 0,
