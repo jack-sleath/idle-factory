@@ -16,16 +16,22 @@ describe('seedMarket: pre-seeded history', () => {
       const it = m.items[id]
       expect(it.history.length).toBe(HISTORY_LEN)
       expect(it.crashed).toBe(false)
-      // The newest point (live price) is left exactly at the starting value…
+      // The oldest point is the starting value; the newest point (live price)
+      // is the endpoint of the forward walk…
+      expect(it.history[0]).toBe(ITEMS_BY_ID[id].startingValue)
       expect(it.history[it.history.length - 1]).toBe(it.price)
-      // …but the window as a whole moves, so the sparkline is not flat.
+      // …and the window as a whole moves, so the sparkline is not flat.
       expect(new Set(it.history).size).toBeGreaterThan(1)
     }
   })
 
-  it('keeps the current price at the item starting value', () => {
-    const m = seedMarket(0)
-    expect(m.items['ore'].price).toBe(ITEMS_BY_ID['ore'].startingValue)
+  it('sets the current price to the endpoint of the seeding walk, not the base value', () => {
+    // A biased-low rng makes every step a drop, so the walked price ends
+    // strictly below the starting value rather than pinned to it.
+    const m = seedMarket(0, () => 0.25)
+    const start = ITEMS_BY_ID['ore'].startingValue
+    expect(m.items['ore'].price).toBeLessThan(start)
+    expect(m.items['ore'].price).toBe(m.items['ore'].history[HISTORY_LEN - 1])
   })
 
   it('clamps synthetic back-story within each item price band', () => {
@@ -70,7 +76,7 @@ describe('fillHistory: back-fill short windows', () => {
 
 describe('stepMarket: neutral random walk', () => {
   it('leaves prices unchanged when rand()=0.5 (factor exp(0)=1)', () => {
-    const before = seedMarket(0)
+    const before = seedMarket(0, () => 0.5) // neutral seed → prices at startingValue
     const after = stepMarket(before, () => 0.5)
     for (const id of Object.keys(before.items)) {
       expect(after.items[id].price).toBe(before.items[id].price)
@@ -78,7 +84,7 @@ describe('stepMarket: neutral random walk', () => {
   })
 
   it('is geometrically neutral: a down step then an up step restores the price', () => {
-    const start = seedMarket(0)
+    const start = seedMarket(0, () => 0.5) // neutral seed → prices at startingValue
     const down = stepMarket(start, () => 0) // factor 1/(1+v)
     const back = stepMarket(down, () => 1) // factor (1+v)
     for (const id of Object.keys(start.items)) {

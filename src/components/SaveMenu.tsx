@@ -17,20 +17,20 @@ function downloadFile(filename: string, text: string) {
 }
 
 /**
- * Manual save management (M8): Save/Load against localStorage, plus Export to a
- * JSON file and Import from one. Opened from the HUD; shows a short status line.
+ * Save management (M8): the game autosaves to localStorage, so this panel
+ * offers Export to a JSON file / Import from one (for backups and moving
+ * between browsers) plus a confirmed Reset. Opened from the HUD; shows a short
+ * status line.
  */
 export function SaveMenu({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState('')
+  const [confirmingReset, setConfirmingReset] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleSave = () => {
-    useGameStore.getState().saveNow()
-    setStatus('Saved to this browser.')
-  }
-
-  const handleLoad = () => {
-    setStatus(useGameStore.getState().loadFromStorage() ? 'Loaded last save.' : 'No save found.')
+  const handleReset = () => {
+    useGameStore.getState().resetGame()
+    setConfirmingReset(false)
+    setStatus('Game reset to a fresh start.')
   }
 
   const handleExport = () => {
@@ -52,18 +52,38 @@ export function SaveMenu({ onClose }: { onClose: () => void }) {
         </button>
       </header>
       <div className="save__actions">
-        <button type="button" className="save__btn" onClick={handleSave}>
-          Save
-        </button>
-        <button type="button" className="save__btn" onClick={handleLoad}>
-          Load
-        </button>
         <button type="button" className="save__btn" onClick={handleExport}>
           Export
         </button>
         <button type="button" className="save__btn" onClick={() => fileRef.current?.click()}>
           Import
         </button>
+      </div>
+      <div className="save__reset">
+        {confirmingReset ? (
+          <div className="save__confirm" role="alertdialog" aria-label="Confirm reset">
+            <p className="save__confirm-text">
+              Reset the game to a fresh start? This wipes your factory, money, and town — it can't
+              be undone. Export first if you want a backup.
+            </p>
+            <div className="save__confirm-actions">
+              <button type="button" className="save__btn save__btn--danger" onClick={handleReset}>
+                Reset everything
+              </button>
+              <button type="button" className="save__btn" onClick={() => setConfirmingReset(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="save__btn save__btn--danger save__btn--wide"
+            onClick={() => setConfirmingReset(true)}
+          >
+            Reset game
+          </button>
+        )}
       </div>
       <input
         ref={fileRef}

@@ -18,7 +18,7 @@ function resetToEmptyWorld() {
     townHalls: new Map(),
     townModifiers: IDENTITY_TOWN_MODIFIERS,
     money: 0,
-    market: seedMarket(0),
+    market: seedMarket(0, () => 0.5), // neutral seed → live prices at each item's base value
     online: true,
     lastAway: null,
     savedAt: 0,
@@ -177,6 +177,37 @@ describe('sell all (M5)', () => {
     store.place(5, 0, 'storage-basic')
     store.sellAll(5, 0) // storage but empty
     expect(useGameStore.getState().money).toBe(0)
+  })
+})
+
+describe('resetGame', () => {
+  beforeEach(resetToEmptyWorld)
+
+  it('wipes progress back to a fresh starter kit and persists it', () => {
+    const store = useGameStore.getState()
+    // Dirty the state: money, a placed machine, a stockpile, a town hall.
+    useGameStore.setState({
+      money: 9999,
+      stores: new Map([[cellKey(3, 0), { item: 'diamond', count: 5 }]]),
+      townHalls: new Map([['1,1', { villager: 3 }]]),
+    })
+    store.place(3, 0, 'storage-basic')
+
+    useGameStore.getState().resetGame()
+    const s = useGameStore.getState()
+
+    // Back to a fresh start: starter kit only, starting money, cleared state.
+    expect(s.money).toBe(config.startingMoney)
+    expect([...s.world.values()].map((m) => m.kind).sort()).toEqual(['belt', 'spawner', 'storage'])
+    expect(s.stores.size).toBe(0)
+    expect(s.townHalls.size).toBe(0)
+    expect(s.townModifiers).toEqual(IDENTITY_TOWN_MODIFIERS)
+
+    // The reset is persisted, so a reload sees the fresh game, not the old one.
+    const reloaded = loadSave()
+    expect(reloaded?.money).toBe(config.startingMoney)
+    expect(reloaded?.machines.length).toBe(3)
+    expect(reloaded?.stores.length).toBe(0)
   })
 })
 

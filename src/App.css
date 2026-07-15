@@ -440,6 +440,38 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
+.save__btn--wide {
+  width: 100%;
+}
+
+.save__btn--danger {
+  border-color: rgba(255, 107, 107, 0.5);
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff9b9b;
+}
+
+.save__btn--danger:hover {
+  background: rgba(255, 107, 107, 0.22);
+}
+
+.save__reset {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.save__confirm-text {
+  margin: 0 0 8px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.save__confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .save__status {
   margin: 10px 0 0;
   font-size: 12px;
