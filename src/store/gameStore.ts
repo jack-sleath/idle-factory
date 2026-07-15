@@ -87,8 +87,6 @@ export interface GameState {
   exportSaveString: () => string
   /** Restore state from a JSON save string; returns false if it is invalid. */
   importSave: (json: string) => boolean
-  /** Reload the last localStorage save into memory; false if none exists. */
-  loadFromStorage: () => boolean
   /** Wipe the game back to a fresh start (starter kit) and persist it. */
   resetGame: () => void
 }
@@ -430,13 +428,6 @@ export const useGameStore = create<GameState>((set, get) => {
       if (!save) return false
       applySave(migrateSave(save)) // upgrade an older imported save before applying
       get().saveNow() // persist the imported state as the new autosave
-      return true
-    },
-
-    loadFromStorage: () => {
-      const save = loadSave()
-      if (!save) return false
-      applySave(save)
       return true
     },
 
