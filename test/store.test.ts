@@ -18,7 +18,7 @@ function resetToEmptyWorld() {
     townHalls: new Map(),
     townModifiers: IDENTITY_TOWN_MODIFIERS,
     money: 0,
-    market: seedMarket(0),
+    market: seedMarket(0, () => 0.5), // neutral seed → live prices at each item's base value
     online: true,
     lastAway: null,
     savedAt: 0,

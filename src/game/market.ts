@@ -56,29 +56,31 @@ export function priceBand(
 }
 
 /**
- * A fresh market. Each item's current price is its starting value, but its
- * sparkline history is pre-seeded with a full HISTORY_LEN points from a neutral
- * random walk stepped *backwards* from that starting value — so a brand-new (or
- * freshly reset) market shows a real, moving chart instead of a flat line pinned
- * to the base value. The synthetic back-story is clamped to each item's crash
- * band (see `priceBand()`, no crash resets) so it stays plausible; the newest
- * point — the live price — is left exactly at the starting value.
+ * A fresh market. Each item's sparkline history is pre-seeded with a full
+ * HISTORY_LEN points from a neutral random walk stepped *forwards* from its
+ * starting value — so a brand-new (or freshly reset) market shows a real, moving
+ * chart instead of a flat line pinned to the base value. The oldest point is the
+ * `startingValue`; the newest point — and the live current price — is the
+ * endpoint of that walk, i.e. what the price would be if those steps had
+ * actually elapsed. The synthetic history is clamped to each item's crash band
+ * (see `priceBand()`, no crash resets) so it stays plausible.
  */
 export function seedMarket(now: number, rng: Rng = Math.random): Market {
   const lnBand = Math.log(1 + config.volatility)
   const items: Record<string, MarketItem> = {}
   for (const it of ITEMS) {
-    // Walk backwards from the starting value, prepending older prices, so the
-    // history ends (newest, last) exactly at `startingValue`.
+    // Walk forwards from the starting value, appending newer prices, so the
+    // history begins (oldest, first) at `startingValue` and ends (newest, last)
+    // at the walked price, which is also the live current price.
     const history: number[] = [it.startingValue]
     const band = priceBand(it)
     let price = it.startingValue
     for (let i = 1; i < HISTORY_LEN; i++) {
       price *= Math.exp((rng() * 2 - 1) * lnBand)
       price = Math.min(Math.max(price, band.min), band.max)
-      history.unshift(price)
+      history.push(price)
     }
-    items[it.id] = { price: it.startingValue, history, crashed: false }
+    items[it.id] = { price, history, crashed: false }
   }
   return { lastUpdate: now, items }
 }
