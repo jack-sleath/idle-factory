@@ -89,6 +89,8 @@ export interface GameState {
   importSave: (json: string) => boolean
   /** Reload the last localStorage save into memory; false if none exists. */
   loadFromStorage: () => boolean
+  /** Wipe the game back to a fresh start (starter kit) and persist it. */
+  resetGame: () => void
 }
 
 function machineFromCatalog(catalogId: string, x: number, y: number): Machine | null {
@@ -436,6 +438,31 @@ export const useGameStore = create<GameState>((set, get) => {
       if (!save) return false
       applySave(save)
       return true
+    },
+
+    resetGame: () => {
+      const now = Date.now()
+      const w = worldFromMachines(seedStarterKit())
+      set({
+        camera: { ...config.camera },
+        world: w,
+        chunks: buildChunkIndex(w, config.chunkSize),
+        items: new Map(),
+        buffers: new Map(),
+        stores: new Map(),
+        townHalls: new Map(),
+        townModifiers: computeTownModifiers(new Map()),
+        splitterCursors: new Map(),
+        money: config.startingMoney,
+        market: seedMarket(now),
+        online: true,
+        lastAway: null,
+        tick: 0,
+        selected: null,
+        savedAt: 0,
+        worldRev: get().worldRev + 1,
+      })
+      get().saveNow() // overwrite the autosave so the reset survives a reload
     },
   }
 })
