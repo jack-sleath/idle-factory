@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "simulate": "vite-node scripts/simulate.ts",
     "preview": "vite preview",
     "vendor:twemoji": "node scripts/vendor-twemoji.mjs",
     "gen:icons": "node scripts/gen-icons.mjs"

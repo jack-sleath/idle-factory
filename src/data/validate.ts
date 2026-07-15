@@ -70,6 +70,9 @@ export function validateData(): string[] {
     if (entry.kind === 'storage' && (!entry.capacity || entry.capacity <= 0)) {
       errors.push(`storage "${entry.id}" needs a positive capacity`)
     }
+    if (entry.costGrowth !== undefined && entry.costGrowth < 1) {
+      errors.push(`catalog "${entry.id}" costGrowth must be >= 1 (got ${entry.costGrowth})`)
+    }
   }
 
   for (const r of RECIPES.processor) {

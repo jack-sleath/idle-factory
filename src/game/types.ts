@@ -63,8 +63,15 @@ export interface CatalogEntry {
   kind: MachineKind
   name: string
   emoji: string
-  /** Money cost to build (enforced from M6; placement is free in M2). */
+  /** Money cost to build the FIRST paid copy (enforced from M6). */
   cost: number
+  /**
+   * Per-copy cost growth. Each additional placed copy of this catalog id costs
+   * `cost × costGrowth ^ placedCount`, so the Nth copy is pricier than the
+   * first — the standard idle-game curve that stops one cheap line from being
+   * spammed into infinite income. Omitted / 1 = flat cost (every copy the same).
+   */
+  costGrowth?: number
   /** If true, the first copy (while none placed) is free (M6). */
   freeIfNonePlaced?: boolean
   /** Default facing when placed. */

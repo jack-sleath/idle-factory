@@ -16,10 +16,27 @@ describe('effectiveCost (first-free basics)', () => {
     expect(effectiveCost(belt, 4)).toBe(5)
   })
 
-  it('always charges full price for non-free machines', () => {
-    const seller = CATALOG_BY_ID['seller-basic'] // cost 50, not free
+  it('always charges full price for non-free machines with no growth', () => {
+    const seller = CATALOG_BY_ID['seller-basic'] // cost 50, not free, flat
     expect(effectiveCost(seller, 0)).toBe(50)
     expect(effectiveCost(seller, 2)).toBe(50)
+  })
+
+  it('scales cost per copy when costGrowth is set', () => {
+    const entry = { id: 'x', kind: 'spawner', name: 'X', emoji: '⛏️', cost: 100, costGrowth: 1.1 } as const
+    // First paid copy is the base cost; each later copy is base × growth^placed.
+    expect(effectiveCost(entry, 0)).toBe(100)
+    expect(effectiveCost(entry, 1)).toBe(110)
+    expect(effectiveCost(entry, 2)).toBe(121)
+    expect(effectiveCost(entry, 10)).toBe(Math.round(100 * 1.1 ** 10))
+    // Growth is monotonic increasing.
+    expect(effectiveCost(entry, 5)).toBeGreaterThan(effectiveCost(entry, 4))
+  })
+
+  it('a free-first-of-kind copy is still free even with growth', () => {
+    const entry = { id: 'y', kind: 'spawner', name: 'Y', emoji: '⛏️', cost: 100, costGrowth: 1.2, freeIfNonePlaced: true } as const
+    expect(effectiveCost(entry, 0)).toBe(0)
+    expect(effectiveCost(entry, 1)).toBe(120)
   })
 })
 

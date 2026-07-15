@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 10,
+  saveVersion: 11,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,
@@ -68,6 +68,17 @@ export const config = {
   },
   /** Floors for the reduction levers, so they can't drive a factor to zero. */
   townLeverFloors: { volatility: 0.25, buildCost: 0.25 },
+  /**
+   * Diminishing returns on banked villagers. Each lever's strength scales with
+   * `count ^ diminishingExponent` rather than `count`, so villagers are NOT
+   * linearly stacking — the Nth villager is worth less than the first.
+   *  - 1    → linear (every villager equally strong; the old behaviour)
+   *  - 0.5  → square root: 1 villager unchanged, 2 give ×1.41, 4 to double 1
+   *  - <0.5 → harsher falloff (approaches logarithmic feel)
+   * Chosen so a single villager still matches its `townLevers` value exactly
+   * (`1 ^ e = 1`), so those per-unit numbers keep their meaning at the margin.
+   */
+  townScaling: { diminishingExponent: 0.5 },
 
   /** Offline catch-up cap, applied to both market and production (M9). */
   maxOfflineHours: 24,
