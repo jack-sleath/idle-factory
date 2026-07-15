@@ -29,6 +29,18 @@ export const IDENTITY_TOWN_MODIFIERS: TownModifiers = {
   ceilingMultiplier: {},
 }
 
+/**
+ * Diminishing-returns transform applied to a banked villager count before it
+ * drives a lever. With `config.townScaling.diminishingExponent < 1` villagers
+ * stop stacking linearly — two are worth less than twice one — which keeps the
+ * compounding levers (sell/offline) from running away as counts grow. A single
+ * villager is left unchanged (`1 ^ e = 1`), so the `townLevers` values keep
+ * their meaning as the per-first-villager rate.
+ */
+export function effectiveVillagers(count: number): number {
+  return Math.pow(Math.max(0, count), config.townScaling.diminishingExponent)
+}
+
 /** Sum banked villagers across every town hall, keyed by villager item id. */
 export function sumVillagers(townHalls: Map<string, TownHallState>): Record<string, number> {
   const totals: Record<string, number> = {}
@@ -43,7 +55,9 @@ export function computeTownModifiers(townHalls: Map<string, TownHallState>): Tow
   if (townHalls.size === 0) return IDENTITY_TOWN_MODIFIERS
   const totals = sumVillagers(townHalls)
   const lv = config.townLevers
-  const n = (id: string) => totals[id] ?? 0
+  // `n(id)` is the *effective* count after diminishing returns, not the raw
+  // tally — so every lever below inherits the non-linear scaling for free.
+  const n = (id: string) => effectiveVillagers(totals[id] ?? 0)
   const floorAt = (value: number, floor: number) => Math.max(floor, value)
   return {
     sellMultiplier: 1 + n('merchant') * lv.merchant + n('villager') * lv.villager,

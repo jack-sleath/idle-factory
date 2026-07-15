@@ -69,8 +69,10 @@ important because they decide what the tool can and can't tell you:
   milestones as the stable headline metric.
 
 To sweep the buff levers themselves, edit `config.townLevers` /
-`config.townLeverFloors` and re-run — the simulator reads them through the real
-`computeTownModifiers`, so what you tune is what it measures. To sweep prices /
+`config.townLeverFloors` / `config.townScaling` and re-run — the simulator reads
+them through the real `computeTownModifiers`, so what you tune is what it
+measures. `townScaling.diminishingExponent` (<1) makes villagers stack
+sub-linearly so buffs can't run away (see `effectiveVillagers` in `town.ts`). To sweep prices /
 build costs / spawner rates without editing data, pass `SimOverrides` to
 `simulate()` (same shape as `scaling.ts`'s overrides).
 
