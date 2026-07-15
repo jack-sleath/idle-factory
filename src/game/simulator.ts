@@ -318,6 +318,8 @@ export interface SimResult {
   spawnerMilestones: SpawnerMilestone[]
   /** Real days to build the single most expensive spawner (the "end game"), or null. */
   endGameDay: number | null
+  /** Real days until the first villager-buff line was built (the town-hall path opens), or null. */
+  firstBuffDay: number | null
   /** Per-session samples of the money/income/buff trajectory. */
   samples: Sample[]
   finalMoney: number
@@ -409,6 +411,10 @@ export function simulate(
   builtCounts.set(model.bootstrap.item, 1)
   applyPlacement(model.bootstrap)
 
+  // Calendar ms at which the first villager-buff line went down (town-hall path
+  // opens); null until then.
+  let firstBuffMs: number | null = null
+
   const spawnerMilestones = new Map<string, SpawnerMilestone>()
   const recordSpawners = (line: LineDef) => {
     for (const catalogId of line.spawners) {
@@ -494,6 +500,7 @@ export function simulate(
             buffBudget -= c
             investedTotal += c
             applyPlacement(line)
+            if (firstBuffMs === null) firstBuffMs = wallMs
             buffInstances.push({ type, ratePerTick: line.ratePerTick, builtActiveMs: activeMs })
             recordSpawners(line)
             buffMachines -= line.machineCount
@@ -578,6 +585,7 @@ export function simulate(
     profile,
     spawnerMilestones: milestoneList,
     endGameDay: endGame ? endGame.atDay : null,
+    firstBuffDay: firstBuffMs === null ? null : firstBuffMs / MS_PER_DAY,
     samples,
     finalMoney: money,
     finalNetWorth: money + investedTotal,
