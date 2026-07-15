@@ -64,9 +64,14 @@ important because they decide what the tool can and can't tell you:
 - **Town halls only bank villagers during active play** — offline catch-up
   (`offline.ts`) extrapolates storage and sellers but *not* town halls — so buff
   strength is gated by hands-on time, not wall-clock.
-- Machine costs are **flat** (no per-copy scaling), so reinvestment compounds;
-  treat net-worth magnitudes as ordinal, and prefer the *time-to-spawner*
-  milestones as the stable headline metric.
+- Spawners have **per-copy cost growth** (`costGrowth`), so duplicating a line
+  gets pricier; plumbing is flat. Reinvestment still compounds hard, so treat
+  net-worth magnitudes as ordinal and prefer the *time-to-spawner* milestones as
+  the stable headline metric.
+- The simulator plays *optimally* (auto-sell everything, ROI-greedy building,
+  aggressive duplication), so its times are a **lower bound** — a real casual
+  player is slower. Tune the fast profiles to "a bit faster than you want" and
+  real play lands where you intend.
 
 To sweep the buff levers themselves, edit `config.townLevers` /
 `config.townLeverFloors` / `config.townScaling` and re-run — the simulator reads
@@ -75,6 +80,84 @@ measures. `townScaling.diminishingExponent` (<1) makes villagers stack
 sub-linearly so buffs can't run away (see `effectiveVillagers` in `town.ts`). To sweep prices /
 build costs / spawner rates without editing data, pass `SimOverrides` to
 `simulate()` (same shape as `scaling.ts`'s overrides).
+
+---
+
+## How the economy scales (read before costing new content)
+
+The whole progression is a race between two exponentials: **income compounds**
+(sell → reinvest → more sellers → more income) and **spawner costs compound**
+per copy (`costGrowth`). A few hard-won facts about how they interact — they
+decide what a new item/recipe/spawner does to the curve:
+
+1. **Income massively out-scales raw costs.** A tick is 500 ms and offline
+   earning runs up to `maxOfflineHours` (24h) a day, so *one* modest line earns
+   tens of thousands of coins a day. Against that, a three-figure spawner is
+   free money. This is why the deposit tier is priced in the hundreds of
+   thousands to millions — costs only gate progress when they're on the same
+   order as *daily income*, not per-item price.
+
+2. **Any cheap productive spawner floods the economy.** Optimal play duplicates
+   the best income/cost line relentlessly, so making *anything* cheap that
+   feeds a decent-value sell item (even $15 swords, let alone $38 pies) lets a
+   min-maxer bankroll the whole tech tree in a day or two. You cannot gate the
+   end-game by pricing a *subset* of spawners high while their inputs stay cheap
+   — the cheap inputs' own sell lines pay for everything. Gating requires the
+   *lucrative* producers themselves to be expensive.
+
+3. **So the spawner ladder is two tracks** (see `catalog.json`):
+   - **Farm track** (`ore`, `oak`, `well`, `sheep`, veg, fruit, `cow`,
+     `sugarcane`): cheap (tens of thousands). This is the early game *and* the
+     whole villager/buff chain — see below — so it must stay affordable.
+   - **Deposit track** (`silver`, `gold`, `sapphire`, `emerald`, `ruby`,
+     `diamond`): expensive (hundreds of thousands → millions). These are the
+     "end-game spawners", the premium goal. Their high cost mostly signals
+     *tier*; it does not hard-gate an optimal player (see #2).
+   All spawners carry `costGrowth: 1.15` so no single line duplicates to
+   infinity.
+
+4. **The villager/buff track needs no gems.** A villager is
+   `food + drink + bed` (`bed = planks + wool`, `drink = water`), and every
+   specialist is `villager + one cheap item` (merchant←ring, guard←iron-sword,
+   innkeeper←bed, mason←planks, farmer←wheat, miner←ore). All of that is farm
+   track, so the town hall is reachable early (~day 1–2) without touching the
+   deposit track. Keep it that way: **do not** make a new villager/specialist
+   recipe depend on a deposit-track item, or you re-gate buffs behind the
+   end-game.
+
+5. **Villager buffs have diminishing returns** (`townScaling`,
+   `effectiveVillagers`): banked count scales as `count ^ 0.5`, and the
+   reduction levers are floored (`townLeverFloors`). Without this the linear
+   `townLevers` made banked villagers in the thousands give absurd multipliers.
+   A new buff should be modest per-unit and, if it's a reduction, floored.
+
+### Costing a new item
+
+Set `startingValue` by where the item sits in the sell economy, because that —
+times its production rate — is the income it injects:
+- **Raw / material** ($1–5): ores, wood, wool, wheat, water, raw veg. Low value,
+  just feedstock.
+- **Basic product** ($6–20): bread, cheese, juices, simple weapons, single-gem
+  jewellery. The bread-and-butter mid game.
+- **Premium product** ($20–90): pies, sweet pies, gem rings/amulets, gold/diamond
+  swords. These are the income engine; they should sit behind the deposit track
+  or behind long recipe chains, not behind cheap raw spawners.
+- **Valuable raw** ($8–50): the gems themselves, sold direct.
+
+A high-value item is only "end-game" if *its whole recipe chain* bottoms out at
+an expensive (deposit-track) spawner. If it can be built from farm-track inputs,
+it will be spammed early regardless of its price — check with `npm run simulate`.
+
+### Costing a new spawner
+
+Decide the track. Farm-track raw feedstock → tens of thousands, `costGrowth`
+~1.15. A rare/valuable resource meant as a progression goal → deposit track,
+hundreds of thousands to millions. Then **run `npm run simulate`** and read
+`firstBuffDay` / the end-game-spawner day for the `Daily 1h` and `Light`
+profiles: farm additions should barely move them; a deposit addition should slot
+into the late ladder. If a "cheap" addition pulls the end-game day in sharply,
+its output is feeding a lucrative sell line (#2) — raise the value's gate or the
+spawner's tier.
 
 ---
 
@@ -104,6 +187,8 @@ Field meaning (see `ItemDef` in `src/game/types.ts`):
   (global knobs in `src/data/config.ts`); when a price walks down to the floor
   or up to the ceiling it "crashes" back to `startingValue`. See `priceBand()`
   in `src/game/market.ts`. Items carry no per-item price band of their own.
+  For *where to pitch* the value and how it affects pacing, see "How the economy
+  scales" above ("Costing a new item").
 
 What happens automatically once an item exists:
 - **Market**: `seedMarket()` in `src/game/market.ts` iterates `ITEMS`, so every
@@ -144,12 +229,16 @@ Add an entry to `src/data/catalog.json` (see `CatalogEntry` in
   "kind": "spawner",
   "name": "Gold Mine",
   "emoji": "🟡",
-  "cost": 150,
+  "cost": 600000,
+  "costGrowth": 1.15,
   "defaultDir": "E",
   "outputItem": "gold-ore",
   "rateTicks": 10
 }
 ```
+
+(For where to pitch `cost` — cheap farm track vs. expensive deposit track — and
+how to verify with `npm run simulate`, see "How the economy scales" above.)
 
 Fields:
 - `id` — unique catalog id; this is what a placed `Machine` stores as
