@@ -4,6 +4,7 @@ import { loadSave } from '../src/game/save'
 import { seedMarket } from '../src/game/market'
 import { cellKey } from '../src/game/world'
 import { config } from '../src/data/config'
+import { IDENTITY_TOWN_MODIFIERS } from '../src/game/town'
 
 function resetToEmptyWorld() {
   localStorage.clear()
@@ -13,6 +14,8 @@ function resetToEmptyWorld() {
     items: new Map(),
     buffers: new Map(),
     stores: new Map(),
+    townHalls: new Map(),
+    townModifiers: IDENTITY_TOWN_MODIFIERS,
     money: 0,
     market: seedMarket(0),
     online: true,
@@ -75,6 +78,44 @@ describe('placement / rotate / delete', () => {
     expect(useGameStore.getState().world.has(cellKey(1, 1))).toBe(true)
     store.remove(1, 1)
     expect(useGameStore.getState().world.has(cellKey(1, 1))).toBe(false)
+  })
+})
+
+describe('town hall (store wiring)', () => {
+  beforeEach(() => {
+    resetToEmptyWorld()
+    useGameStore.setState({ money: 100_000 }) // afford the town hall
+  })
+
+  const feed = (villagerId: string) => {
+    const store = useGameStore.getState()
+    store.place(0, 0, 'belt-basic')
+    store.place(1, 0, 'town-hall')
+    useGameStore.setState({ items: new Map([[cellKey(0, 0), villagerId]]) })
+    useGameStore.getState().advanceTick()
+  }
+
+  it('banks a delivered villager and updates the global sell modifier', () => {
+    feed('merchant')
+    const s = useGameStore.getState()
+    expect(s.townHalls.get(cellKey(1, 0))).toEqual({ merchant: 1 })
+    expect(s.townModifiers.sellMultiplier).toBeCloseTo(1 + config.townLevers.merchant, 10)
+  })
+
+  it('deleting the town hall discards its villagers and resets the levers', () => {
+    feed('merchant')
+    expect(useGameStore.getState().townModifiers.sellMultiplier).toBeGreaterThan(1)
+    useGameStore.getState().remove(1, 0)
+    const s = useGameStore.getState()
+    expect(s.townHalls.has(cellKey(1, 0))).toBe(false)
+    expect(s.townModifiers.sellMultiplier).toBe(1)
+  })
+
+  it('persists banked villagers across a save/load round-trip', () => {
+    feed('guard')
+    useGameStore.getState().saveNow()
+    const saved = loadSave()!
+    expect(saved.townHalls).toEqual([{ key: cellKey(1, 0), counts: { guard: 1 } }])
   })
 })
 

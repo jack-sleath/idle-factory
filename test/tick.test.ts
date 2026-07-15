@@ -12,6 +12,8 @@ const processor = (x: number, y: number, dir: Dir) => machine('processor', x, y,
 const combiner = (x: number, y: number, dir: Dir) => machine('combiner', x, y, dir, 'combiner-basic')
 const storage = (x: number, y: number, dir: Dir) => machine('storage', x, y, dir, 'storage-basic') // capacity 500
 const seller = (x: number, y: number, dir: Dir) => machine('seller', x, y, dir, 'seller-basic')
+const village = (x: number, y: number, dir: Dir) => machine('village', x, y, dir, 'village-hut')
+const townhall = (x: number, y: number, dir: Dir) => machine('townhall', x, y, dir, 'town-hall')
 
 function worldOf(...ms: Machine[]): Map<string, Machine> {
   const w = new Map<string, Machine>()
@@ -38,13 +40,14 @@ function mkState(
   items: Map<string, string>,
   tick: number,
   buffers: Map<string, MachineBuffer> = new Map(),
-  extra: Partial<Pick<SimState, 'stores' | 'money' | 'online' | 'prices' | 'sellerBuffers'>> = {},
+  extra: Partial<Pick<SimState, 'stores' | 'townHalls' | 'money' | 'online' | 'prices' | 'sellerBuffers'>> = {},
 ): SimState {
   return {
     machines,
     items,
     buffers,
     stores: extra.stores ?? new Map(),
+    townHalls: extra.townHalls ?? new Map(),
     sellerBuffers: extra.sellerBuffers ?? new Map(),
     money: extra.money ?? 0,
     prices: extra.prices ?? {},
@@ -233,6 +236,83 @@ describe('combiners (M4)', () => {
     expect(bufAt(s, 1, 1)?.in.filter(Boolean)).toEqual(['gold-ring'])
     expect(bufAt(s, 1, 1)?.out).toBeNull()
     expect(itemAt(s, 2, 1)).toBeUndefined() // nothing emitted yet
+  })
+})
+
+describe('village hut (villager production)', () => {
+  // An east-facing village takes food behind (W), drink from S, bed from N,
+  // and emits a villager out its facing (E). Mirrors villageInputDirs(E).
+  const layout = () =>
+    worldOf(
+      belt(0, 1, 'E'), // west / behind → food slot
+      belt(1, 2, 'N'), // south → drink slot
+      belt(1, 0, 'S'), // north → bed slot
+      village(1, 1, 'E'),
+      belt(2, 1, 'E'), // output belt
+    )
+
+  it('combines a food, a drink and a bed into a villager', () => {
+    // Any food + any drink works (category-matched), so try two different pairs.
+    for (const [food, drink] of [['apple', 'lemonade'], ['pizza', 'wine']] as const) {
+      let s = mkState(layout(), itemsOf([[0, 1, food], [1, 2, drink], [1, 0, 'bed']]), 0)
+      s = step(s) // all three inputs pulled into their slots
+      expect(bufAt(s, 1, 1)?.in.filter(Boolean).sort()).toEqual([drink, food, 'bed'].sort())
+      s = step(s) // trio combines into the held villager
+      expect(bufAt(s, 1, 1)?.out).toBe('villager')
+      s = step(s) // villager pushed downstream
+      expect(itemAt(s, 2, 1)).toBe('villager')
+    }
+  })
+
+  it('rejects a wrong-category input on an input side (back-pressures, no junk)', () => {
+    // wheat is `material`, not `food`, so the food side rejects it: it stays on
+    // the belt and the hut never fills that slot or emits.
+    let s = mkState(layout(), itemsOf([[0, 1, 'wheat'], [1, 2, 'lemonade'], [1, 0, 'bed']]), 0)
+    s = step(s)
+    s = step(s)
+    expect(itemAt(s, 0, 1)).toBe('wheat') // held on the belt, not consumed
+    expect(bufAt(s, 1, 1)?.in.filter(Boolean).sort()).toEqual(['bed', 'lemonade'])
+    expect(bufAt(s, 1, 1)?.out ?? null).toBeNull() // nothing produced
+    expect(itemAt(s, 2, 1)).toBeUndefined()
+  })
+
+  it('waits for all three inputs before producing (partial inputs are held)', () => {
+    let s = mkState(layout(), itemsOf([[0, 1, 'apple'], [1, 2, 'lemonade']]), 0) // no bed
+    s = step(s)
+    s = step(s)
+    expect(bufAt(s, 1, 1)?.in.filter(Boolean).sort()).toEqual(['apple', 'lemonade'])
+    expect(bufAt(s, 1, 1)?.out ?? null).toBeNull()
+    expect(itemAt(s, 2, 1)).toBeUndefined()
+  })
+})
+
+describe('town hall (villager sink)', () => {
+  it('banks an arriving villager into its per-type tally', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'villager']]), 0))
+    expect(s.townHalls.get('1,0')).toEqual({ villager: 1 })
+    expect(s.items.size).toBe(0) // consumed off the belt
+  })
+
+  it('accumulates by type across ticks', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const townHalls = new Map([['1,0', { merchant: 2 }]])
+    const s = step(mkState(machines, itemsOf([[0, 0, 'merchant']]), 0, new Map(), { townHalls }))
+    expect(s.townHalls.get('1,0')).toEqual({ merchant: 3 })
+  })
+
+  it('rejects a non-villager item (it back-pressures, not eaten)', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0))
+    expect(s.townHalls.get('1,0')).toBeUndefined()
+    expect(itemAt(s, 0, 0)).toBe('ore') // held on the belt
+  })
+
+  it('keeps the town-halls map by reference when nothing is banked', () => {
+    const machines = worldOf(belt(0, 0, 'E'), townhall(1, 0, 'E'))
+    const townHalls = new Map([['1,0', { villager: 1 }]])
+    const s = step(mkState(machines, itemsOf([]), 0, new Map(), { townHalls }))
+    expect(s.townHalls).toBe(townHalls) // clone-on-write: unchanged → same ref
   })
 })
 

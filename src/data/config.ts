@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 5,
+  saveVersion: 10,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,
@@ -16,12 +16,58 @@ export const config = {
   marketIntervalMinutes: 5,
   /** Market volatility: factor range is ×[1/(1+v), (1+v)] (M7). */
   volatility: 0.2,
+  /**
+   * Market crash band, expressed as multiples of each item's `startingValue`
+   * (M7). A price crashes back to its starting value when it walks down to
+   * `startingValue * crashFloorMultiple` or up to
+   * `startingValue * crashCeilingMultiple`. Derived globally so items only need
+   * a `startingValue` — see `priceBand()` in `src/game/market.ts`.
+   */
+  crashFloorMultiple: 0.5,
+  crashCeilingMultiple: 2,
 
   /** Starting money for a new game (M6). */
   startingMoney: 0,
 
   /** Item id produced as the fallback "junk" output (M4). */
   junkItemId: 'junk',
+
+  /**
+   * Village Hut recipe (villager production). The hut consumes one item matching
+   * each input requirement — `food`/`drink` by item category, `bed` by exact id —
+   * and emits `output`. Category-gated: a non-matching item on an input side is
+   * rejected (it back-pressures) rather than being turned into junk.
+   */
+  villageRecipe: {
+    food: 'food',
+    drink: 'drink',
+    bed: 'bed',
+    output: 'villager',
+  },
+
+  /**
+   * Per-villager economic effect when banked in a Town Hall. Each is a
+   * per-unit rate applied to the summed population across all town halls (see
+   * `computeTownModifiers` in `src/game/town.ts`):
+   *  - villager  → generic sell-price boost (untyped, small)
+   *  - merchant  → sell-price boost
+   *  - guard     → market-volatility reduction (steadier prices)
+   *  - innkeeper → offline-earnings boost
+   *  - mason     → machine build-cost reduction
+   *  - farmer    → higher crash ceiling for `food`
+   *  - miner     → higher crash ceiling for `material`/`valuable`
+   */
+  townLevers: {
+    villager: 0.005,
+    merchant: 0.02,
+    guard: 0.01,
+    innkeeper: 0.05,
+    mason: 0.01,
+    farmer: 0.02,
+    miner: 0.02,
+  },
+  /** Floors for the reduction levers, so they can't drive a factor to zero. */
+  townLeverFloors: { volatility: 0.25, buildCost: 0.25 },
 
   /** Offline catch-up cap, applied to both market and production (M9). */
   maxOfflineHours: 24,

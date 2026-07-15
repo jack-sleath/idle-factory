@@ -1,8 +1,20 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { ITEMS } from '../data'
+import { ITEM_CATEGORIES, type ItemCategory } from '../game/types'
 import { formatMoney } from '../lib/format'
 import { Emoji } from './Emoji'
+
+/** Display label + icon per category; iteration order follows ITEM_CATEGORIES. */
+const CATEGORY_META: Record<ItemCategory, { label: string; emoji: string }> = {
+  food: { label: 'Food', emoji: '🍽️' },
+  drink: { label: 'Drink', emoji: '🥤' },
+  valuable: { label: 'Valuables', emoji: '💎' },
+  weapon: { label: 'Weapons', emoji: '⚔️' },
+  material: { label: 'Materials', emoji: '🧱' },
+  villager: { label: 'Villagers', emoji: '🧑' },
+  misc: { label: 'Misc', emoji: '📦' },
+}
 
 const SPARK_W = 56
 const SPARK_H = 20
@@ -37,9 +49,10 @@ function Sparkline({ values, crashed }: { values: number[]; crashed: boolean }) 
 }
 
 /**
- * The stock-market panel: live price and a last-10 sparkline for every item.
- * The search box matches anywhere in the name, so "ruby" surfaces the stone and
- * every ruby ring and amulet.
+ * The stock-market panel: live price and a last-10 sparkline for every item,
+ * grouped under sticky category headers (Food, Drink, Valuables, …). The search
+ * box matches anywhere in the name, so "ruby" surfaces the stone and every ruby
+ * ring and amulet; empty categories drop out of the list while searching.
  */
 export function MarketPanel({ onClose }: { onClose: () => void }) {
   const market = useGameStore((s) => s.market)
@@ -47,6 +60,13 @@ export function MarketPanel({ onClose }: { onClose: () => void }) {
 
   const q = query.trim().toLowerCase()
   const shown = q ? ITEMS.filter((it) => it.name.toLowerCase().includes(q)) : ITEMS
+
+  // Group into category sections, preserving ITEM_CATEGORIES order and dropping
+  // items with no live market entry (and any category left empty).
+  const groups = ITEM_CATEGORIES.map((cat) => ({
+    cat,
+    items: shown.filter((it) => it.category === cat && market.items[it.id]),
+  })).filter((g) => g.items.length > 0)
 
   return (
     <aside className="panel panel--market" aria-label="Market">
@@ -67,28 +87,36 @@ export function MarketPanel({ onClose }: { onClose: () => void }) {
         aria-label="Search items"
       />
       <ul className="market__list">
-        {shown.map((it) => {
-          const m = market.items[it.id]
-          if (!m) return null
-          return (
-            <li key={it.id} className="market__row">
-              <Emoji emoji={it.emoji} size={16} label={it.name} />
-              <span className="market__name" title={it.name}>
-                {it.name}
-              </span>
-              <span className={`market__price${m.crashed ? ' is-crashed' : ''}`}>
-                {formatMoney(m.price)}
-                {m.crashed && (
-                  <span className="market__crash" title="Crashed — reset to base value">
-                    ⚠︎
-                  </span>
-                )}
-              </span>
-              <Sparkline values={m.history} crashed={m.crashed} />
+        {groups.map((g) => (
+          <Fragment key={g.cat}>
+            <li className="market__section">
+              <Emoji emoji={CATEGORY_META[g.cat].emoji} size={13} label="" />
+              <span className="market__section-label">{CATEGORY_META[g.cat].label}</span>
+              <span className="market__section-count">{g.items.length}</span>
             </li>
-          )
-        })}
-        {shown.length === 0 && <li className="market__empty">No items match “{query}”.</li>}
+            {g.items.map((it) => {
+              const m = market.items[it.id]!
+              return (
+                <li key={it.id} className="market__row">
+                  <Emoji emoji={it.emoji} size={16} label={it.name} />
+                  <span className="market__name" title={it.name}>
+                    {it.name}
+                  </span>
+                  <span className={`market__price${m.crashed ? ' is-crashed' : ''}`}>
+                    {formatMoney(m.price)}
+                    {m.crashed && (
+                      <span className="market__crash" title="Crashed — reset to base value">
+                        ⚠︎
+                      </span>
+                    )}
+                  </span>
+                  <Sparkline values={m.history} crashed={m.crashed} />
+                </li>
+              )
+            })}
+          </Fragment>
+        ))}
+        {groups.length === 0 && <li className="market__empty">No items match “{query}”.</li>}
       </ul>
     </aside>
   )

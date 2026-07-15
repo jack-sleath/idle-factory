@@ -28,6 +28,11 @@ export function storageCapacity(catalogId: string): number {
   return CATALOG_BY_ID[catalogId]?.capacity ?? 0
 }
 
+/** An item's category, or null if the id is unknown. */
+export function categoryOf(itemId: string): string | null {
+  return ITEMS_BY_ID[itemId]?.category ?? null
+}
+
 export const CATALOG_BY_ID: Record<string, CatalogEntry> = Object.fromEntries(
   CATALOG.map((entry) => [entry.id, entry]),
 )

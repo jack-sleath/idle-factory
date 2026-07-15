@@ -1,4 +1,5 @@
 import { CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
+import { ITEM_CATEGORIES } from '../game/types'
 import { config } from './config'
 
 // Referential-integrity check over the content JSON (items / catalog / recipes).
@@ -26,10 +27,29 @@ export function validateData(): string[] {
   dupes(ITEMS.map((i) => i.id), 'item')
   dupes(CATALOG.map((c) => c.id), 'catalog')
 
+  // Every item must carry a known category (used to group the market/shop UI).
+  const categories = new Set<string>(ITEM_CATEGORIES)
+  for (const item of ITEMS) {
+    if (!categories.has(item.category)) {
+      errors.push(`item "${item.id}" has unknown category "${item.category}"`)
+    }
+  }
+
   // The junk fallback item must exist; the tick engine emits it for any
   // un-matched processor/combiner transform.
   if (!known(config.junkItemId)) {
     errors.push(`config.junkItemId "${config.junkItemId}" is not a defined item`)
+  }
+
+  // The Village Hut recipe must be satisfiable: its output and bed item must
+  // exist, and at least one food and one drink item must exist to feed it.
+  const vr = config.villageRecipe
+  if (!known(vr.output)) errors.push(`villageRecipe output "${vr.output}" is not a defined item`)
+  if (!known(vr.bed)) errors.push(`villageRecipe bed "${vr.bed}" is not a defined item`)
+  for (const cat of [vr.food, vr.drink]) {
+    if (!ITEMS.some((i) => i.category === cat)) {
+      errors.push(`villageRecipe needs at least one "${cat}" item to exist`)
+    }
   }
 
   for (const entry of CATALOG) {

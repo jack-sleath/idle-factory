@@ -48,7 +48,11 @@ const dataDir = path.join(process.cwd(), 'src', 'data')
 const items = JSON.parse(fs.readFileSync(path.join(dataDir, 'items.json'), 'utf8'))
 const catalog = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'))
 
-const UI_CHROME = ['🏭', '🔍', '🔄', '❌', '📈', '💾', '❓']
+const UI_CHROME = [
+  '🏭', '🔍', '🔄', '❌', '📈', '💾', '❓',
+  // Market-panel category section icons (those not already in the data set).
+  '🍽️', '⚔️', '🧱',
+]
 
 const EMOJI = [
   ...new Set([

@@ -14,9 +14,10 @@ import { CATALOG_BY_ID } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
 import { loadSave, makeSave, migrateSave, parseSave, writeSave, type GameSave } from '../game/save'
-import { step, type MachineBuffer, type StorageState } from '../game/tick'
+import { step, type MachineBuffer, type StorageState, type TownHallState } from '../game/tick'
 import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 import { computeOffline, type AwaySummary } from '../game/offline'
+import { computeTownModifiers, type TownModifiers } from '../game/town'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -37,6 +38,10 @@ export interface GameState {
   buffers: Map<string, MachineBuffer>
   /** Storage contents for storage cells: cell key `x,y` → {item, count}. */
   stores: Map<string, StorageState>
+  /** Banked villagers for town hall cells: cell key `x,y` → {villagerId: count}. */
+  townHalls: Map<string, TownHallState>
+  /** Global economy modifiers derived from the summed town-hall population. */
+  townModifiers: TownModifiers
   /** Round-robin cursors for splitter cells: cell key `x,y` → next side index. */
   splitterCursors: Map<string, number>
   /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
@@ -108,6 +113,16 @@ function worldFromMachines(machines: Machine[]): Map<string, Machine> {
   return world
 }
 
+function townHallsFromSaved(saved: { key: string; counts: Record<string, number> }[]): Map<string, TownHallState> {
+  const m = new Map<string, TownHallState>()
+  for (const h of saved) m.set(h.key, { ...h.counts })
+  return m
+}
+
+function townHallList(townHalls: Map<string, TownHallState>): { key: string; counts: TownHallState }[] {
+  return [...townHalls.entries()].map(([key, counts]) => ({ key, counts }))
+}
+
 interface InitState {
   camera: Camera
   world: Map<string, Machine>
@@ -115,6 +130,7 @@ interface InitState {
   savedAt: number
   money: number
   stores: Map<string, StorageState>
+  townHalls: Map<string, TownHallState>
   market: Market
 }
 
@@ -125,9 +141,11 @@ function initState(): InitState {
     const world = worldFromMachines(saved.machines)
     const stores = new Map<string, StorageState>()
     for (const s of saved.stores) stores.set(s.key, { item: s.item, count: s.count })
+    const townHalls = townHallsFromSaved(saved.townHalls ?? [])
     // Advance the market by however many intervals elapsed while away (capped),
-    // then back-fill any short sparkline so a young save still charts full.
-    const market = fillHistory(catchUpMarket(saved.market ?? seedMarket(now), now, Math.random))
+    // applying the town-hall market levers, then back-fill any short sparkline.
+    const modifiers = computeTownModifiers(townHalls)
+    const market = fillHistory(catchUpMarket(saved.market ?? seedMarket(now), now, Math.random, modifiers))
     return {
       camera: saved.camera,
       world,
@@ -135,6 +153,7 @@ function initState(): InitState {
       savedAt: saved.savedAt,
       money: saved.money,
       stores,
+      townHalls,
       market,
     }
   }
@@ -146,6 +165,7 @@ function initState(): InitState {
     savedAt: 0,
     money: config.startingMoney,
     stores: new Map(),
+    townHalls: new Map(),
     market: seedMarket(now),
   }
 }
@@ -180,6 +200,7 @@ export const useGameStore = create<GameState>((set, get) => {
     const w = worldFromMachines(save.machines)
     const nextStores = new Map<string, StorageState>()
     for (const s of save.stores) nextStores.set(s.key, { item: s.item, count: s.count })
+    const nextTownHalls = townHallsFromSaved(save.townHalls ?? [])
     set({
       camera: save.camera,
       world: w,
@@ -187,6 +208,8 @@ export const useGameStore = create<GameState>((set, get) => {
       items: new Map(),
       buffers: new Map(),
       stores: nextStores,
+      townHalls: nextTownHalls,
+      townModifiers: computeTownModifiers(nextTownHalls),
       splitterCursors: new Map(),
       money: save.money,
       market: save.market ? fillHistory(save.market) : seedMarket(Date.now()),
@@ -196,7 +219,7 @@ export const useGameStore = create<GameState>((set, get) => {
     })
   }
 
-  const { camera, world, chunks, savedAt, money, stores, market } = initState()
+  const { camera, world, chunks, savedAt, money, stores, townHalls, market } = initState()
 
   return {
     camera,
@@ -205,6 +228,8 @@ export const useGameStore = create<GameState>((set, get) => {
     items: new Map(),
     buffers: new Map(),
     stores,
+    townHalls,
+    townModifiers: computeTownModifiers(townHalls),
     splitterCursors: new Map(),
     money,
     market,
@@ -248,8 +273,10 @@ export const useGameStore = create<GameState>((set, get) => {
       if (w.has(key)) return
       const entry = CATALOG_BY_ID[catalogId]
       if (!entry) return
-      // Buying = placing: pay the effective cost (first basic of each is free).
-      const cost = effectiveCost(entry, countPlaced(w, catalogId))
+      // Buying = placing: pay the effective cost (first basic of each is free),
+      // discounted by the town-hall mason lever.
+      const base = effectiveCost(entry, countPlaced(w, catalogId))
+      const cost = Math.round(base * get().townModifiers.buildCostMultiplier)
       if (money < cost) return // can't afford → no-op
       const machine = machineFromCatalog(catalogId, cx, cy)
       if (!machine) return
@@ -267,7 +294,7 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, items, buffers, stores, splitterCursors, selected } = get()
+      const { world: w, chunks: c, items, buffers, stores, townHalls, splitterCursors, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
@@ -277,6 +304,11 @@ export const useGameStore = create<GameState>((set, get) => {
       buffers.delete(key)
       stores.delete(key)
       splitterCursors.delete(key)
+      // Deleting a town hall discards its banked villagers, which drops its
+      // contribution to the global levers — so recompute them.
+      if (townHalls.delete(key)) {
+        set({ townModifiers: computeTownModifiers(townHalls) })
+      }
       if (selected && selected.x === cx && selected.y === cy) {
         set({ selected: null })
       }
@@ -294,7 +326,7 @@ export const useGameStore = create<GameState>((set, get) => {
       if (!machine || machine.kind !== 'storage') return
       const store = stores.get(key)
       if (!store || store.item === null || store.count <= 0) return
-      const proceeds = store.count * livePrice(market, store.item)
+      const proceeds = store.count * livePrice(market, store.item) * get().townModifiers.sellMultiplier
       // Liquidate: empty and unlock the storage (new type may lock in next).
       const nextStores = new Map(stores)
       nextStores.delete(key)
@@ -304,7 +336,7 @@ export const useGameStore = create<GameState>((set, get) => {
 
     advanceMarket: () => {
       const current = get().market
-      const next = catchUpMarket(current, Date.now(), Math.random)
+      const next = catchUpMarket(current, Date.now(), Math.random, get().townModifiers)
       if (next !== current) {
         set({ market: next })
         scheduleAutosave()
@@ -312,10 +344,14 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     applyOfflineProgress: () => {
-      const { world, stores, market, money, savedAt } = get()
+      const { world, stores, market, money, savedAt, townModifiers } = get()
       if (savedAt <= 0) return // brand-new game: nothing to catch up
       const now = Date.now()
-      const result = computeOffline({ machines: world, stores, market, money, savedAt }, now, Math.random)
+      const result = computeOffline(
+        { machines: world, stores, market, money, savedAt, modifiers: townModifiers },
+        now,
+        Math.random,
+      )
       // Show a summary only for a meaningful absence, to avoid noise on quick
       // tab switches (but the market/stockpile catch-up always applies).
       const worthShowing = result.summary.elapsedMs >= 60_000 &&
@@ -336,41 +372,54 @@ export const useGameStore = create<GameState>((set, get) => {
     dismissAway: () => set({ lastAway: null }),
 
     advanceTick: () => {
-      const { world: w, items, buffers, stores, splitterCursors, money, market, online, tick } = get()
+      const { world: w, items, buffers, stores, townHalls, splitterCursors, money, market, online, tick, townModifiers } = get()
+      // Merchants (and the tiny per-villager base) raise every live sale price;
+      // scaling the price snapshot applies it without touching the seller code.
+      const sellMult = townModifiers.sellMultiplier
+      const prices = priceSnapshot(market)
+      if (sellMult !== 1) for (const id of Object.keys(prices)) prices[id] *= sellMult
       const nextSim = step({
         machines: w,
         items,
         buffers,
         stores,
+        townHalls,
         sellerBuffers: EMPTY_SELLER_BUFFERS, // live play sells online; never buffers
         splitterCursors,
         money,
-        prices: priceSnapshot(market),
+        prices,
         online,
         tick,
       })
+      // Town halls only change when a villager is banked (clone-on-write in
+      // step keeps the reference otherwise); recompute the levers just then.
+      const banked = nextSim.townHalls !== townHalls
       set({
         items: nextSim.items,
         buffers: nextSim.buffers,
         stores: nextSim.stores,
+        ...(banked
+          ? { townHalls: nextSim.townHalls, townModifiers: computeTownModifiers(nextSim.townHalls) }
+          : null),
         splitterCursors: nextSim.splitterCursors ?? new Map(),
         money: nextSim.money,
         tick: nextSim.tick,
       })
+      if (banked) scheduleAutosave()
     },
 
     saveNow: () => {
-      const { camera: cam, world: w, money, stores, market } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market } = get()
       const savedAtNow = Date.now()
       set({ savedAt: savedAtNow })
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
-      writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList, market))
+      writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls)))
     },
 
     exportSaveString: () => {
-      const { camera: cam, world: w, money, stores, market, savedAt: at } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at } = get()
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
-      const save = makeSave(cam, [...w.values()], at || Date.now(), money, storeList, market)
+      const save = makeSave(cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls))
       return JSON.stringify(save, null, 2)
     },
 

@@ -1,6 +1,7 @@
 import type { Dir, Machine } from './types'
 import { step, type SimState, type StorageState } from './tick'
 import { catchUpMarket, livePrice, type Market, type Rng } from './market'
+import { IDENTITY_TOWN_MODIFIERS, type TownModifiers } from './town'
 import { storageCapacity } from '../data'
 import { config } from '../data/config'
 import { cellKey, dirDelta, nextDir } from './world'
@@ -34,6 +35,8 @@ export interface OfflineInput {
   market: Market
   money: number
   savedAt: number
+  /** Town-hall economy modifiers (sell/offline boosts, market volatility). */
+  modifiers?: TownModifiers
 }
 
 const MS_PER_HOUR = 3_600_000
@@ -47,7 +50,7 @@ function combinerInputDirs(dir: Dir): [Dir, Dir] {
 
 /** The sides a machine offers items out of. Mirrors tick.ts movement rules. */
 function outputDirs(m: Machine): Dir[] {
-  if (m.kind === 'seller') return []
+  if (m.kind === 'seller' || m.kind === 'townhall') return []
   if (m.kind === 'splitter') {
     // Behind (opposite dir) is the input; it offers out the other three sides.
     const cw = nextDir(m.dir)
@@ -72,6 +75,10 @@ function acceptsFrom(m: Machine, incoming: Dir): boolean {
       return incoming === m.dir // only from directly behind → same travel direction
     case 'combiner':
       return combinerInputDirs(m.dir).includes(OPPOSITE[incoming]) // either input side
+    case 'village':
+      return incoming !== OPPOSITE[m.dir] // accept on the three non-output (input) sides
+    case 'townhall':
+      return true // a villager sink; accepts a neighbour pointing in from any side
     default:
       return false // spawner and anything else never receive
   }
@@ -79,12 +86,13 @@ function acceptsFrom(m: Machine, incoming: Dir): boolean {
 
 /** Compute the state after being away from `savedAt` until `now`. Pure. */
 export function computeOffline(input: OfflineInput, now: number, rng: Rng): OfflineResult {
+  const modifiers = input.modifiers ?? IDENTITY_TOWN_MODIFIERS
   const capMs = config.maxOfflineHours * MS_PER_HOUR
   const elapsed = Math.min(Math.max(0, now - input.savedAt), capMs)
 
   // Market advances by the same capped elapsed window (catchUpMarket is bounded
   // by maxOfflineHours too), and is used for the caught-up selling price below.
-  const market = catchUpMarket(input.market, now, rng)
+  const market = catchUpMarket(input.market, now, rng, modifiers)
 
   const tickMs = config.tickMs
   const sampleTicks = Math.max(1, Math.round((config.offlineSampleSeconds * 1000) / tickMs))
@@ -98,6 +106,7 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
     items: new Map(),
     buffers: new Map(),
     stores: new Map(),
+    townHalls: new Map(),
     sellerBuffers: new Map(),
     money: 0,
     prices: {},
@@ -239,7 +248,8 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
     }
   }
 
-  // Extrapolate sellers: sell the extrapolated buffer once at the caught-up price.
+  // Extrapolate sellers: sell the extrapolated buffer once at the caught-up
+  // price, then apply the town-hall sell/offline boosts to the total.
   let earned = 0
   for (const [key, buf] of sim.sellerBuffers) {
     const base = baseSeller.get(key) ?? {}
@@ -249,6 +259,7 @@ export function computeOffline(input: OfflineInput, now: number, rng: Rng): Offl
       earned += (delta / sampleMs) * elapsed * livePrice(market, item)
     }
   }
+  earned *= modifiers.sellMultiplier * modifiers.offlineMultiplier
 
   const stockpiled = Object.entries(stockpiledByItem).map(([item, count]) => ({ item, count }))
   return {

@@ -12,6 +12,8 @@ export type MachineKind =
   | 'storage'
   | 'seller'
   | 'splitter'
+  | 'village'
+  | 'townhall'
 
 /**
  * A placed machine. Keyed in the world by its cell (`x,y`). `dir` is the
@@ -29,16 +31,30 @@ export interface Machine {
   dir: Dir
 }
 
+/**
+ * Item categories, for grouping in the market/shop UI. Rule of thumb:
+ * `material` is anything whose only value is as an in-between production step
+ * (ores, metal bars, wood, textile, wheat/sugarcane/sugar, dough, pie cases);
+ * raw things that are food/treasure in their own right keep that identity
+ * (an apple is `food`, a diamond is `valuable`). `misc` is the catch-all for
+ * finished goods that fit nothing else (furniture, junk). The canonical list
+ * lives here so the `ItemCategory` union and `validateData()` stay in sync.
+ */
+export const ITEM_CATEGORIES = ['food', 'drink', 'valuable', 'weapon', 'material', 'villager', 'misc'] as const
+export type ItemCategory = (typeof ITEM_CATEGORIES)[number]
+
 /** An item type definition (from data/items.json). */
 export interface ItemDef {
   id: string
   name: string
   emoji: string
-  /** Base/starting market value. */
+  /** Grouping bucket for the market/shop UI (see `ITEM_CATEGORIES`). */
+  category: ItemCategory
+  /**
+   * Base/starting market value. Also the crash reset target, and the anchor the
+   * market's crash band is derived from (`config.crashFloor/CeilingMultiple`).
+   */
   startingValue: number
-  /** Market crash floor and ceiling (used from M7). */
-  minPrice: number
-  maxPrice: number
 }
 
 /** A buildable entry in the shop catalog (from data/catalog.json). */

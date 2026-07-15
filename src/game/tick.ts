@@ -1,6 +1,6 @@
 import type { Dir, Machine } from './types'
 import { cellKey, dirDelta, nextDir } from './world'
-import { basePrice, CATALOG_BY_ID, combinerOutput, processorOutput, storageCapacity } from '../data'
+import { basePrice, categoryOf, CATALOG_BY_ID, combinerOutput, processorOutput, storageCapacity } from '../data'
 import { config } from '../data/config'
 
 // The simulation is a pure `step(state) -> state` function over next-state
@@ -48,6 +48,9 @@ export interface StorageState {
   count: number
 }
 
+/** A town hall's banked villagers, keyed by villager item id → count consumed. */
+export type TownHallState = Record<string, number>
+
 /** The simulation state. `machines` is read-only; the rest is rebuilt per tick. */
 export interface SimState {
   machines: Map<string, Machine>
@@ -57,6 +60,8 @@ export interface SimState {
   buffers: Map<string, MachineBuffer>
   /** cell key → contents, for storage cells only (M5). */
   stores: Map<string, StorageState>
+  /** cell key → banked villagers, for town hall cells only. Persisted. */
+  townHalls: Map<string, TownHallState>
   /**
    * cell key → { itemId: count } consumed by an offline seller (M9). Only
    * written while `online` is false; used by offline catch-up to measure seller
@@ -95,6 +100,24 @@ function inputDirs(outputDir: Dir): [Dir, Dir] {
   return outputDir === 'E' || outputDir === 'W' ? ['N', 'S'] : ['E', 'W']
 }
 
+// A village's three input sides, one per requirement, given its output facing:
+// [food, drink, bed] = [directly behind, clockwise-perpendicular, the other
+// perpendicular]. Facing E → food from W (behind), drink from S, bed from N.
+function villageInputDirs(dir: Dir): [Dir, Dir, Dir] {
+  const cw = nextDir(dir)
+  return [OPPOSITE[dir], cw, nextDir(nextDir(cw))]
+}
+
+// The village recipe's per-slot requirement check: slot 0 accepts any `food`
+// item, slot 1 any `drink`, slot 2 the exact `bed` item id (all from config).
+function villageSlotAccepts(slot: number, item: string): boolean {
+  const r = config.villageRecipe
+  if (slot === 0) return categoryOf(item) === r.food
+  if (slot === 1) return categoryOf(item) === r.drink
+  if (slot === 2) return item === r.bed
+  return false
+}
+
 // A splitter takes input from directly behind (opposite `dir`) and offers its
 // item out of the other three sides. This is the fixed rotation order the
 // round-robin cursor walks: forward, then clockwise, then anticlockwise.
@@ -124,7 +147,7 @@ function combine(a: string, b: string): string {
  */
 export function step(state: SimState): SimState {
   const tick = state.tick + 1
-  const { machines, items, buffers, stores, sellerBuffers, prices, online } = state
+  const { machines, items, buffers, stores, townHalls, sellerBuffers, prices, online } = state
   const splitterCursors = state.splitterCursors ?? new Map<string, number>()
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
@@ -141,6 +164,7 @@ export function step(state: SimState): SimState {
         return spawnerDue(m, tick)
       case 'processor':
       case 'combiner':
+      case 'village':
         return buf(key)?.out != null
       case 'storage':
         return (stores.get(key)?.count ?? 0) > 0
@@ -161,6 +185,7 @@ export function step(state: SimState): SimState {
         return CATALOG_BY_ID[m.catalogId]?.outputItem
       case 'processor':
       case 'combiner':
+      case 'village':
         return buf(key)?.out ?? undefined
       case 'storage':
         return stores.get(key)?.item ?? undefined
@@ -211,6 +236,23 @@ export function step(state: SimState): SimState {
   const combinerSlotForFeeder = (m: Machine, fromKey: string): 0 | 1 | -1 => {
     if (combinerFeeder(m, 0) === fromKey) return 0
     if (combinerFeeder(m, 1) === fromKey) return 1
+    return -1
+  }
+
+  // A village's slot-`slot` feeder: the neighbour on that input side, pointing
+  // inward and ready. Mirrors combinerFeeder but over three sides.
+  const villageFeeder = (m: Machine, slot: 0 | 1 | 2): string | null => {
+    const sideDir = villageInputDirs(m.dir)[slot]
+    const { dx, dy } = dirDelta(sideDir)
+    const key = cellKey(m.x + dx, m.y + dy)
+    const nb = machines.get(key)
+    return nb && sourceOutDir(nb, key) === OPPOSITE[sideDir] && readyToEmit(key) ? key : null
+  }
+
+  const villageSlotForFeeder = (m: Machine, fromKey: string): 0 | 1 | 2 | -1 => {
+    if (villageFeeder(m, 0) === fromKey) return 0
+    if (villageFeeder(m, 1) === fromKey) return 1
+    if (villageFeeder(m, 2) === fromKey) return 2
     return -1
   }
 
@@ -294,6 +336,16 @@ export function step(state: SimState): SimState {
         const slot = combinerSlotForFeeder(tm, fromKey)
         return slot >= 0 && combinerSlotFree(targetKey, slot)
       }
+      case 'village': {
+        // Accept only if the feeder sits on an input side AND its item satisfies
+        // that side's requirement (food/drink category, or the bed item). A
+        // mismatch is rejected — it back-pressures rather than becoming junk.
+        const slot = villageSlotForFeeder(tm, fromKey)
+        if (slot < 0) return false
+        const incoming = emittedValue(fromKey)
+        if (incoming === undefined || !villageSlotAccepts(slot, incoming)) return false
+        return villageSlotFree(targetKey, slot)
+      }
       case 'storage': {
         if (winningFeeder(tm.x, tm.y) !== fromKey) return false
         const store = stores.get(targetKey)
@@ -315,6 +367,14 @@ export function step(state: SimState): SimState {
         // A seller always consumes its winning feeder's item: online it is banked
         // on build, offline it is buffered (M9) so nothing is lost while away.
         return winningFeeder(tm.x, tm.y) === fromKey
+      case 'townhall': {
+        // A sink like the seller, but only for villagers: it banks them by type.
+        // A non-villager on its feeder is rejected (back-pressures) instead of
+        // being silently eaten.
+        if (winningFeeder(tm.x, tm.y) !== fromKey) return false
+        const incoming = emittedValue(fromKey)
+        return incoming !== undefined && categoryOf(incoming) === 'villager'
+      }
       default:
         return false
     }
@@ -336,9 +396,22 @@ export function step(state: SimState): SimState {
     return b.in[0] != null && b.in[1] != null && (b.out == null || willEmit(key))
   }
 
+  // A village input slot has room if empty, or all three slots are full and the
+  // output will clear (letting the trio combine into a villager and free them).
+  function villageSlotFree(key: string, slot: number): boolean {
+    const b = buf(key)
+    if (!b || b.in[slot] == null) return true
+    const full = b.in[0] != null && b.in[1] != null && b.in[2] != null
+    return full && (b.out == null || willEmit(key))
+  }
+
   const nextItems = new Map<string, string>()
   const nextBuffers = new Map<string, MachineBuffer>()
   const nextStores = new Map<string, StorageState>()
+  // Town halls persist and only grow, so keep the same map reference unless a
+  // villager is actually banked this tick (clone-on-write below). Callers can
+  // cheaply detect "no change" by identity to skip recomputing town bonuses.
+  let nextTownHalls = townHalls
   const nextSellerBuffers = new Map<string, Record<string, number>>(sellerBuffers)
   const nextSplitterCursors = new Map<string, number>()
   let money = state.money
@@ -410,6 +483,22 @@ export function step(state: SimState): SimState {
         }
         break
       }
+      case 'village': {
+        // Three input slots (food, drink, bed); once all are filled they combine
+        // into a villager. Same fill/consume/emit dance as the combiner.
+        const b = buf(key) ?? { in: [null, null, null], out: null }
+        const emit = willEmit(key)
+        const full = b.in[0] != null && b.in[1] != null && b.in[2] != null
+        const consumes = full && (b.out == null || emit)
+        const out = consumes ? config.villageRecipe.output : emit ? null : b.out
+        const next: (string | null)[] = consumes ? [null, null, null] : [b.in[0], b.in[1], b.in[2]]
+        for (const slot of [0, 1, 2] as const) {
+          const feeder = villageFeeder(m, slot)
+          if (feeder && willEmit(feeder)) next[slot] = emittedValue(feeder) ?? next[slot]
+        }
+        if (next.some((s) => s != null) || out != null) nextBuffers.set(key, { in: next, out })
+        break
+      }
       case 'storage': {
         const store = stores.get(key)
         let item = store?.item ?? null
@@ -438,6 +527,17 @@ export function step(state: SimState): SimState {
         }
         break
       }
+      case 'townhall': {
+        // Bank an arriving villager into this hall's per-type tally (clone the
+        // town-halls map on first write so unchanged ticks keep their reference).
+        const incoming = arrivingItem(m.x, m.y)
+        if (incoming !== undefined) {
+          if (nextTownHalls === townHalls) nextTownHalls = new Map(townHalls)
+          const prev = nextTownHalls.get(key) ?? {}
+          nextTownHalls.set(key, { ...prev, [incoming]: (prev[incoming] ?? 0) + 1 })
+        }
+        break
+      }
       // spawner: emits into neighbours but stores nothing itself.
     }
   }
@@ -447,6 +547,7 @@ export function step(state: SimState): SimState {
     items: nextItems,
     buffers: nextBuffers,
     stores: nextStores,
+    townHalls: nextTownHalls,
     sellerBuffers: nextSellerBuffers,
     splitterCursors: nextSplitterCursors,
     money,
