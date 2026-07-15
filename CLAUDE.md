@@ -26,7 +26,53 @@ Zustand store in `src/store/gameStore.ts` glues placement, ticks, saving, and
 the market together.
 
 Commands: `npm run dev`, `npm run test` (vitest), `npm run build` (typecheck +
-prod build). Tests live in `test/`.
+prod build), `npm run simulate` (balancing report). Tests live in `test/`.
+
+---
+
+## Balancing the gameplay loop (`npm run simulate`)
+
+There are two economy models, both headless and both **idealised on purpose**
+(no grid/belt geometry — they model the factory as a portfolio of
+self-contained, auto-selling production lines). Their numbers are only
+meaningful *relative to each other*, for comparing tuning changes:
+
+- `src/game/scaling.ts` — the analytical "time to full automation" report shown
+  in the in-app Admin screen. Answers "how long from a fresh start until every
+  item is auto-sold?" for the *current* economy.
+- `src/game/simulator.ts` — a longer-horizon **player-profile simulator**. It
+  wraps the same line-economy in a calendar-time loop (active sessions that earn
+  + build, offline gaps that earn at the capped offline rate) so you can ask
+  "how quickly does each kind of player reach the expensive end-game spawners,
+  and does chasing villager buffs pay off?" `scripts/simulate.ts` runs every
+  `PRESET_PROFILES` entry over ~a month and prints a comparison;
+  `npm run simulate -- 60` sweeps 60 days, `npm run simulate -- 30 json` dumps
+  machine-readable results.
+
+A **profile** is session length, sessions/day (fractional = less than daily),
+machines placed per active minute (bounds how fast the factory grows — a long
+villager chain eats far more of this than a short sell line), and
+`buffInvestmentFraction` (share of money/build-budget routed into the villager
+buff pipeline vs. sell lines).
+
+Key modelling assumptions (all in the header comment of `simulator.ts`) —
+important because they decide what the tool can and can't tell you:
+- Prices are each item's **mean** (`startingValue`): an auto-seller sells into a
+  mean-reverting market at whatever the price is. So the market-*timing* levers
+  (`guard`/`farmer`/`miner`, which only widen the price band) show ~no effect
+  here; the compounding levers (`merchant`/`mason`/`innkeeper`) do.
+- **Town halls only bank villagers during active play** — offline catch-up
+  (`offline.ts`) extrapolates storage and sellers but *not* town halls — so buff
+  strength is gated by hands-on time, not wall-clock.
+- Machine costs are **flat** (no per-copy scaling), so reinvestment compounds;
+  treat net-worth magnitudes as ordinal, and prefer the *time-to-spawner*
+  milestones as the stable headline metric.
+
+To sweep the buff levers themselves, edit `config.townLevers` /
+`config.townLeverFloors` and re-run — the simulator reads them through the real
+`computeTownModifiers`, so what you tune is what it measures. To sweep prices /
+build costs / spawner rates without editing data, pass `SimOverrides` to
+`simulate()` (same shape as `scaling.ts`'s overrides).
 
 ---
 
