@@ -38,10 +38,12 @@ const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE
 export interface SimOverrides {
   /** item id -> sale price (defaults to the item's startingValue). */
   price?: Record<string, number>
-  /** catalog id -> build cost (defaults to the catalog cost). */
+  /** catalog id -> base build cost (defaults to the catalog cost). */
   cost?: Record<string, number>
   /** spawner catalog id -> ticks between emissions (defaults to catalog). */
   rateTicks?: Record<string, number>
+  /** catalog id -> per-copy cost growth (defaults to the catalog costGrowth ?? 1). */
+  growth?: Record<string, number>
 }
 
 // --- Player profile ----------------------------------------------------------
@@ -90,12 +92,19 @@ interface LineDef {
   ratePerTick: number
   /** Income per tick at the mean price (rate × price), before any buffs. */
   incomePerTick: number
-  /** Build cost at buildCostMultiplier = 1 (machines + belts + terminal). */
+  /**
+   * Machine composition: catalog id -> how many of it this line contains
+   * (producers + one belt each + the terminal seller/town hall). Building a line
+   * places every machine in here, and each one is priced with its own per-copy
+   * growth against how many of that id are already down.
+   */
+  comp: Record<string, number>
+  /** Flat build cost (all machines at base price), used for stable ROI ordering. */
   baseCost: number
   /**
-   * How many machines make up one line (producers + belts + terminal). Consumed
-   * from the per-session placement budget, so a long villager chain costs far
-   * more of a player's hands-on time than a single spawner→seller line.
+   * How many machines make up one line (sum of `comp`). Consumed from the
+   * per-session placement budget, so a long villager chain costs far more of a
+   * player's hands-on time than a single spawner→seller line.
    */
   machineCount: number
   /** Spawner catalog ids this line contains (for end-game milestone tracking). */
@@ -109,6 +118,8 @@ interface ProductionModel {
   buffLines: Record<string, LineDef>
   /** Bootstrap: the free starter ore line, auto-sold from t=0. */
   bootstrap: LineDef
+  /** Per-copy cost growth for a catalog id (1 = flat). */
+  growth: (catalogId: string) => number
 }
 
 /** The catalog id of the (first) buildable of a given kind. */
@@ -125,12 +136,12 @@ export function buildProductionModel(ov: SimOverrides = {}): ProductionModel {
   const price = (id: string) => ov.price?.[id] ?? ITEMS_BY_ID[id]?.startingValue ?? 0
   const cost = (cid: string) => ov.cost?.[cid] ?? CATALOG_BY_ID[cid]?.cost ?? 0
 
-  const PROC = cost(catalogIdOfKind('processor') ?? '')
-  const COMB = cost(catalogIdOfKind('combiner') ?? '')
-  const SELLER = cost(catalogIdOfKind('seller') ?? '')
-  const BELT = cost(catalogIdOfKind('belt') ?? '')
-  const HUT = cost(catalogIdOfKind('village') ?? '')
-  const HALL = cost(catalogIdOfKind('townhall') ?? '')
+  const PROC_ID = catalogIdOfKind('processor') ?? ''
+  const COMB_ID = catalogIdOfKind('combiner') ?? ''
+  const SELLER_ID = catalogIdOfKind('seller') ?? ''
+  const BELT_ID = catalogIdOfKind('belt') ?? ''
+  const HUT_ID = catalogIdOfKind('village') ?? ''
+  const HALL_ID = catalogIdOfKind('townhall') ?? ''
 
   // Item -> its cheapest spawner (there is one per raw item today, but pick the
   // cheapest defensively) with its (possibly overridden) rate.
@@ -189,49 +200,65 @@ export function buildProductionModel(ov: SimOverrides = {}): ProductionModel {
     return r
   }
 
-  // Distinct machines (deduped) needed to produce `item` from raw, keyed so a
-  // shared sub-step is counted once. Excludes the terminal (seller/town hall).
-  const collect = (item: string, acc: Map<string, number>, seen = new Set<string>()): void => {
+  // The producer machines (deduped by sub-step) needed to make `item` from raw,
+  // recorded per catalog id with a running count. Each distinct sub-step is one
+  // machine (a two-step processor chain is two processors). Excludes belts and
+  // the terminal, which lineFor adds. `keySeen` dedups shared sub-steps.
+  const collect = (
+    item: string,
+    comp: Record<string, number>,
+    keySeen: Set<string>,
+    seen = new Set<string>(),
+  ): void => {
     if (seen.has(item)) return
     seen.add(item)
+    const add = (catalogId: string, key: string) => {
+      if (keySeen.has(key)) return
+      keySeen.add(key)
+      comp[catalogId] = (comp[catalogId] ?? 0) + 1
+    }
     const sp = spawnerFor.get(item)
     if (sp) {
-      acc.set('sp:' + sp.catalogId, cost(sp.catalogId))
+      add(sp.catalogId, 'sp:' + sp.catalogId)
       return
     }
     if (procByOut.has(item)) {
-      acc.set('proc:' + item, PROC)
-      collect(procByOut.get(item)!, acc, seen)
+      add(PROC_ID, 'proc:' + item)
+      collect(procByOut.get(item)!, comp, keySeen, seen)
       return
     }
     if (item === villagerOut) {
-      acc.set('hut:' + item, HUT)
-      if (foodId) collect(foodId, acc, seen)
-      if (drinkId) collect(drinkId, acc, seen)
-      collect(bedId, acc, seen)
+      add(HUT_ID, 'hut:' + item)
+      if (foodId) collect(foodId, comp, keySeen, seen)
+      if (drinkId) collect(drinkId, comp, keySeen, seen)
+      collect(bedId, comp, keySeen, seen)
       return
     }
     const c = combByOut.get(item)
     if (c) {
-      acc.set('comb:' + item, COMB)
-      collect(c[0], acc, seen)
-      collect(c[1], acc, seen)
+      add(COMB_ID, 'comb:' + item)
+      collect(c[0], comp, keySeen, seen)
+      collect(c[1], comp, keySeen, seen)
     }
   }
 
-  const lineFor = (item: string, terminal: number): LineDef => {
-    const acc = new Map<string, number>()
-    collect(item, acc)
-    const machines = [...acc.values()].reduce((s, v) => s + v, 0)
-    const spawners = [...acc.keys()].filter((k) => k.startsWith('sp:')).map((k) => k.slice(3))
+  const lineFor = (item: string, terminalId: string): LineDef => {
+    const comp: Record<string, number> = {}
+    collect(item, comp, new Set())
+    const producerMachines = Object.values(comp).reduce((s, v) => s + v, 0)
+    const spawners = Object.keys(comp).filter((id) => CATALOG_BY_ID[id]?.kind === 'spawner')
+    // One belt per producer machine, plus the terminal (seller / town hall).
+    comp[BELT_ID] = (comp[BELT_ID] ?? 0) + producerMachines
+    comp[terminalId] = (comp[terminalId] ?? 0) + 1
+    const baseCost = Object.entries(comp).reduce((s, [id, n]) => s + cost(id) * n, 0)
     const ratePerTick = rate(item)
     return {
       item,
       ratePerTick,
       incomePerTick: ratePerTick * price(item),
-      baseCost: machines + acc.size * BELT + terminal, // ~one belt per machine
-      // producers + one belt each + the terminal machine (seller / town hall)
-      machineCount: acc.size * 2 + 1,
+      comp,
+      baseCost,
+      machineCount: Object.values(comp).reduce((s, v) => s + v, 0),
       spawners,
     }
   }
@@ -244,13 +271,13 @@ export function buildProductionModel(ov: SimOverrides = {}): ProductionModel {
   const sellLines: LineDef[] = ITEMS.filter(
     (it) => it.id !== config.junkItemId && !isVillager(it.id) && hasProducer(it.id),
   )
-    .map((it) => lineFor(it.id, SELLER))
+    .map((it) => lineFor(it.id, SELLER_ID))
     .filter((l) => l.incomePerTick > 0)
 
   const buffLines: Record<string, LineDef> = {}
   for (const it of ITEMS) {
     if (isVillager(it.id) && hasProducer(it.id)) {
-      const line = lineFor(it.id, HALL)
+      const line = lineFor(it.id, HALL_ID)
       if (line.ratePerTick > 0) buffLines[it.id] = line
     }
   }
@@ -258,9 +285,9 @@ export function buildProductionModel(ov: SimOverrides = {}): ProductionModel {
   // Bootstrap: the free starter kit (ore gatherer → belt → storage) with the
   // player manually selling ore. Modelled as an ore line auto-selling from t=0
   // at no cost, exactly like scaling.ts's bootstrap.
-  const bootstrap = lineFor('ore', 0)
+  const bootstrap = lineFor('ore', SELLER_ID)
 
-  return { sellLines, buffLines, bootstrap }
+  return { sellLines, buffLines, bootstrap, growth: (id: string) => ov.growth?.[id] ?? CATALOG_BY_ID[id]?.costGrowth ?? 1 }
 }
 
 // --- Simulation ---------------------------------------------------------------
@@ -355,9 +382,32 @@ export function simulate(
   const builtCounts = new Map<string, number>()
   const buffInstances: BuffLineInstance[] = []
   let investedTotal = 0
+  // catalog id -> how many of that machine are placed (drives per-copy cost
+  // growth: the next copy costs base × growth^placed).
+  const placed = new Map<string, number>()
 
-  // Bootstrap: the free ore line is "built" (its spawner acquired) from t=0.
+  // The scaled money cost to build one copy of `line` right now, given what is
+  // already placed and the current mason build-cost discount. Each machine in
+  // the line is a geometric run of copies from its current placed count.
+  const lineCostNow = (line: LineDef, buildMult: number): number => {
+    let total = 0
+    for (const [id, n] of Object.entries(line.comp)) {
+      const g = model.growth(id)
+      const p0 = placed.get(id) ?? 0
+      const base = CATALOG_BY_ID[id]?.cost ?? 0
+      const unit = opts.overrides?.cost?.[id] ?? base
+      total += g === 1 ? unit * n : unit * g ** p0 * ((g ** n - 1) / (g - 1))
+    }
+    return Math.round(total * buildMult)
+  }
+  const applyPlacement = (line: LineDef) => {
+    for (const [id, n] of Object.entries(line.comp)) placed.set(id, (placed.get(id) ?? 0) + n)
+  }
+
+  // Bootstrap: the free ore line is "built" (its spawner acquired) from t=0; its
+  // machines seed the placed counts so the next ore-gatherer already scales.
   builtCounts.set(model.bootstrap.item, 1)
+  applyPlacement(model.bootstrap)
 
   const spawnerMilestones = new Map<string, SpawnerMilestone>()
   const recordSpawners = (line: LineDef) => {
@@ -438,11 +488,12 @@ export function simulate(
         for (const type of buffPriority) {
           const line = model.buffLines[type]
           if (!line || line.machineCount > buffMachines) continue
-          const c = Math.round(line.baseCost * buildMult)
+          const c = lineCostNow(line, buildMult)
           if (c <= buffBudget && c <= money) {
             money -= c
             buffBudget -= c
-            investedTotal += line.baseCost
+            investedTotal += c
+            applyPlacement(line)
             buffInstances.push({ type, ratePerTick: line.ratePerTick, builtActiveMs: activeMs })
             recordSpawners(line)
             buffMachines -= line.machineCount
@@ -455,15 +506,17 @@ export function simulate(
     }
 
     // --- Sell lines: buy the highest-ROI affordable NEW line; only when none
-    //     is affordable, duplicate the highest-ROI already-built line. --------
+    //     is affordable, duplicate the highest-ROI already-built line. ROI uses
+    //     the *current* scaled cost, so as copies pile up the greedy naturally
+    //     rotates to whatever is now the cheapest income per coin. -----------
     while (machinesLeft > 0) {
       let bestNew: { line: LineDef; cost: number; roi: number } | null = null
       let bestDup: { line: LineDef; cost: number; roi: number } | null = null
       for (const line of model.sellLines) {
         if (line.machineCount > machinesLeft) continue
-        const c = Math.round(line.baseCost * buildMult)
-        if (c > money) continue
-        const roi = line.incomePerTick / line.baseCost
+        const c = lineCostNow(line, buildMult)
+        if (c > money || c <= 0) continue
+        const roi = line.incomePerTick / c
         const bucket = builtCounts.has(line.item) ? 'dup' : 'new'
         if (bucket === 'new') {
           if (!bestNew || roi > bestNew.roi) bestNew = { line, cost: c, roi }
@@ -474,7 +527,8 @@ export function simulate(
       const pick = bestNew ?? bestDup
       if (!pick) break
       money -= pick.cost
-      investedTotal += pick.line.baseCost
+      investedTotal += pick.cost
+      applyPlacement(pick.line)
       const isNew = !builtCounts.has(pick.line.item)
       builtCounts.set(pick.line.item, (builtCounts.get(pick.line.item) ?? 0) + 1)
       if (isNew) recordSpawners(pick.line)
@@ -543,10 +597,11 @@ export function simulate(
  * or add to these when tuning; `simulate()` takes any profile.
  */
 export const PRESET_PROFILES: PlayerProfile[] = [
-  { name: 'Casual · seller', sessionMinutes: 10, sessionsPerDay: 1, machinesPerMinute: 12, buffInvestmentFraction: 0 },
-  { name: 'Casual · buffs', sessionMinutes: 10, sessionsPerDay: 1, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
-  { name: 'Regular · seller', sessionMinutes: 15, sessionsPerDay: 3, machinesPerMinute: 12, buffInvestmentFraction: 0 },
-  { name: 'Regular · buffs', sessionMinutes: 15, sessionsPerDay: 3, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
+  { name: 'Light · seller', sessionMinutes: 10, sessionsPerDay: 1, machinesPerMinute: 12, buffInvestmentFraction: 0 },
+  { name: 'Light · buffs', sessionMinutes: 10, sessionsPerDay: 1, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
+  // ~1 hour a day across five short sessions — the balancing target profile.
+  { name: 'Daily 1h · seller', sessionMinutes: 12, sessionsPerDay: 5, machinesPerMinute: 12, buffInvestmentFraction: 0 },
+  { name: 'Daily 1h · buffs', sessionMinutes: 12, sessionsPerDay: 5, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
   { name: 'Hardcore · seller', sessionMinutes: 30, sessionsPerDay: 6, machinesPerMinute: 12, buffInvestmentFraction: 0 },
   { name: 'Hardcore · buffs', sessionMinutes: 30, sessionsPerDay: 6, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
   { name: 'Lapsed · seller', sessionMinutes: 20, sessionsPerDay: 0.5, machinesPerMinute: 12, buffInvestmentFraction: 0 },

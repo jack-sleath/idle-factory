@@ -4,6 +4,7 @@ import { loadSave } from '../src/game/save'
 import { seedMarket } from '../src/game/market'
 import { cellKey } from '../src/game/world'
 import { config } from '../src/data/config'
+import { CATALOG_BY_ID } from '../src/data'
 import { IDENTITY_TOWN_MODIFIERS } from '../src/game/town'
 
 function resetToEmptyWorld() {
@@ -218,10 +219,11 @@ describe('economy: buying = placing (M6)', () => {
 
   it('buying a spawner variant (cow) produces its own item (milk)', () => {
     const store = useGameStore.getState()
-    useGameStore.setState({ money: 200 })
-    store.place(0, 0, 'cow') // 🐄 costs 100 → milk every 6 ticks
+    const cowCost = CATALOG_BY_ID['cow'].cost // first copy (none placed yet)
+    useGameStore.setState({ money: cowCost + 100 })
+    store.place(0, 0, 'cow') // 🐄 → milk every 6 ticks
     store.place(1, 0, 'belt-basic') // free first belt
-    expect(useGameStore.getState().money).toBe(100)
+    expect(useGameStore.getState().money).toBe(100) // cow paid, belt free
 
     for (let i = 0; i < 12; i++) useGameStore.getState().advanceTick()
     expect([...useGameStore.getState().items.values()]).toContain('milk')

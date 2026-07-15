@@ -157,8 +157,14 @@ Fields:
 - `kind` — one of the existing `MachineKind`s: `spawner`, `belt`, `processor`,
   `combiner`, `storage`, `seller`, `splitter`.
 - `name` / `emoji` — palette label + sprite.
-- `cost` — money to build. `freeIfNonePlaced: true` makes the *first* copy free
-  while none are placed (used for the starter basics; see `src/game/economy.ts`).
+- `cost` — money to build the first paid copy. `freeIfNonePlaced: true` makes
+  the *first* copy free while none are placed (used for the starter basics; see
+  `src/game/economy.ts`).
+- `costGrowth` — optional per-copy cost multiplier: the Nth placed copy costs
+  `cost × costGrowth ^ placedCount`. Omitted / 1 = flat (every copy the same
+  price). Spawners set this (~1.15) so raw-production can't be spammed into
+  infinite income; plumbing (conveyors, sellers, storage, processors,
+  combiners) stays flat. See `effectiveCost()` in `src/game/economy.ts`.
 - `defaultDir` — facing when placed (defaults to `E`).
 - `outputItem` + `rateTicks` — **spawner only**: which item id it emits and how
   many ticks between emissions (`tick % rateTicks === 0`). See `spawnerDue()` in
