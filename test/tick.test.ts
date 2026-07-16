@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { step, type MachineBuffer, type SimState, type StorageState } from '../src/game/tick'
+import { step, type CrossoverState, type MachineBuffer, type SimState, type StorageState } from '../src/game/tick'
 import { cellKey } from '../src/game/world'
 import type { Dir, Machine, MachineKind } from '../src/game/types'
 
@@ -524,5 +524,89 @@ describe('splitter', () => {
     const machines = worldOf(splitter(0, 0, 'E')) // no neighbours to receive
     const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0))
     expect(itemAt(s, 0, 0)).toBe('ore') // nowhere to go → stays
+  })
+})
+
+describe('crossover', () => {
+  const crossover = (x: number, y: number, dir: Dir) =>
+    machine('crossover', x, y, dir, 'crossover-basic')
+  const withCrossovers = (s: SimState, entries: [number, number, CrossoverState][]): SimState => {
+    s.crossovers = new Map(entries.map(([x, y, c]) => [cellKey(x, y), c]))
+    return s
+  }
+  const crossAt = (s: SimState, x: number, y: number) => s.crossovers?.get(cellKey(x, y))
+
+  it('passes two items over each other without mixing', () => {
+    // A vertical item bound S and a horizontal item bound E both leave to their
+    // own consumer this tick; neither ends up on the other lane.
+    const machines = worldOf(crossover(0, 0, 'E'), belt(0, 1, 'S'), belt(1, 0, 'E'))
+    const st = withCrossovers(mkState(machines, new Map(), 0), [
+      [0, 0, { v: { item: 'ore', out: 'S' }, h: { item: 'bar', out: 'E' } }],
+    ])
+    const s = step(st)
+    expect(itemAt(s, 0, 1)).toBe('ore') // vertical lane exited south
+    expect(itemAt(s, 1, 0)).toBe('bar') // horizontal lane exited east
+    expect(crossAt(s, 0, 0)).toBeUndefined() // both lanes cleared
+  })
+
+  it('routes an incoming item onto the lane opposite its feeder', () => {
+    // Fed from N and W; the N item rides the vertical lane bound S, the W item
+    // the horizontal lane bound E (each exits the side opposite its feeder).
+    const machines = worldOf(crossover(0, 0, 'E'), belt(0, -1, 'S'), belt(-1, 0, 'E'))
+    const st = mkState(machines, itemsOf([[0, -1, 'ore'], [-1, 0, 'bar']]), 0)
+    const s = step(st)
+    expect(crossAt(s, 0, 0)?.v).toEqual({ item: 'ore', out: 'S' })
+    expect(crossAt(s, 0, 0)?.h).toEqual({ item: 'bar', out: 'E' })
+    expect(itemAt(s, 0, -1)).toBeUndefined() // left the feeder belts
+    expect(itemAt(s, -1, 0)).toBeUndefined()
+  })
+
+  it('flows an item all the way through over two ticks', () => {
+    const machines = worldOf(crossover(0, 0, 'E'), belt(-1, 0, 'E'), belt(1, 0, 'E'))
+    const t1 = step(mkState(machines, itemsOf([[-1, 0, 'ore']]), 0))
+    expect(crossAt(t1, 0, 0)?.h).toEqual({ item: 'ore', out: 'E' }) // entered the lane
+    expect(itemAt(t1, 1, 0)).toBeUndefined()
+    const t2 = step(t1)
+    expect(itemAt(t2, 1, 0)).toBe('ore') // exited east to the consumer belt
+    expect(crossAt(t2, 0, 0)).toBeUndefined()
+  })
+
+  it('keeps the lanes independent: a blocked lane does not stall the other', () => {
+    // Vertical exit S has no consumer (blocked); horizontal exit E is open.
+    const machines = worldOf(crossover(0, 0, 'E'), belt(1, 0, 'E'))
+    const st = withCrossovers(mkState(machines, new Map(), 0), [
+      [0, 0, { v: { item: 'ore', out: 'S' }, h: { item: 'bar', out: 'E' } }],
+    ])
+    const s = step(st)
+    expect(itemAt(s, 1, 0)).toBe('bar') // horizontal flowed
+    expect(crossAt(s, 0, 0)?.v).toEqual({ item: 'ore', out: 'S' }) // vertical held
+    expect(crossAt(s, 0, 0)?.h ?? null).toBeNull()
+  })
+
+  it('stalls a head-on axis while the perpendicular axis still flows', () => {
+    // N and S both point into the vertical lane (head-on, no exit for either) → both
+    // feeders back up and the lane stays empty. The W feeder rides the horizontal
+    // lane unaffected.
+    const machines = worldOf(
+      crossover(0, 0, 'E'),
+      belt(0, -1, 'S'), // north feeder
+      belt(0, 1, 'N'), // south feeder (head-on with north)
+      belt(-1, 0, 'E'), // west feeder → horizontal lane
+    )
+    const st = mkState(machines, itemsOf([[0, -1, 'ore'], [0, 1, 'bar'], [-1, 0, 'wheat']]), 0)
+    const s = step(st)
+    expect(itemAt(s, 0, -1)).toBe('ore') // north feeder backed up
+    expect(itemAt(s, 0, 1)).toBe('bar') // south feeder backed up
+    expect(crossAt(s, 0, 0)?.v ?? null).toBeNull() // vertical lane refused both
+    expect(crossAt(s, 0, 0)?.h).toEqual({ item: 'wheat', out: 'E' }) // horizontal took its item
+  })
+
+  it('holds an item when its exit is a dead end (back-pressure)', () => {
+    const machines = worldOf(crossover(0, 0, 'E')) // nothing on the S side to receive
+    const st = withCrossovers(mkState(machines, new Map(), 0), [
+      [0, 0, { v: { item: 'ore', out: 'S' }, h: null }],
+    ])
+    const s = step(st)
+    expect(crossAt(s, 0, 0)?.v).toEqual({ item: 'ore', out: 'S' }) // nowhere to go → stays
   })
 })

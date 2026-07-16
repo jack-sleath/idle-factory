@@ -32,6 +32,15 @@ import { config } from '../data/config'
 // input fans out evenly across whichever of those sides have a willing consumer.
 // Sides with nothing to receive them are skipped, and the rotation only advances
 // when the item actually leaves.
+//
+// A crossover carries up to TWO items at once — one on its vertical (N–S) lane
+// and one on its horizontal (E–W) lane — so two production lines can cross the
+// same cell without mixing. Each lane is feeder-inferred: whichever axis-end
+// neighbour points in is the input, and the item exits the OPPOSITE end (carrying
+// that exit side with it until it leaves). The lanes are independent, so a jam on
+// one never stalls the other. If BOTH ends of an axis point in (two lines aimed
+// head-on), that lane has no valid exit for either — it refuses input and both
+// feeders back up, exactly like any blocked belt (no item is dropped).
 
 /** Internal item storage for a processing machine (processor/combiner). */
 export interface MachineBuffer {
@@ -46,6 +55,23 @@ export interface StorageState {
   /** The locked item type, or null while the storage is still empty. */
   item: string | null
   count: number
+}
+
+/** One lane of a crossover: the item riding it and the side it will exit. */
+export interface CrossoverLane {
+  item: string
+  /** The side this item leaves through (N/S on the vertical lane, E/W on the horizontal). */
+  out: Dir
+}
+
+/**
+ * A crossover's two independent lanes. `v` is the vertical (N–S) lane, `h` the
+ * horizontal (E–W) lane; either is null when that lane is empty. Transient (like
+ * belt `items`) — never persisted, and cleared on offline catch-up.
+ */
+export interface CrossoverState {
+  v: CrossoverLane | null
+  h: CrossoverLane | null
 }
 
 /** A town hall's banked villagers, keyed by villager item id → count consumed. */
@@ -80,6 +106,11 @@ export interface SimState {
    * 0, so it need not be seeded or persisted.
    */
   splitterCursors?: Map<string, number>
+  /**
+   * cell key → lane contents for crossover cells. Transient like `items`;
+   * absent maps default to empty, so it need not be seeded or persisted.
+   */
+  crossovers?: Map<string, CrossoverState>
   /** Monotonic tick counter. */
   tick: number
 }
@@ -98,6 +129,20 @@ const INCOMING: { dx: number; dy: number; out: Dir }[] = [
 /** A combiner's two input sides (slot 0, slot 1), given its output direction. */
 function inputDirs(outputDir: Dir): [Dir, Dir] {
   return outputDir === 'E' || outputDir === 'W' ? ['N', 'S'] : ['E', 'W']
+}
+
+/** Which crossover lane a direction belongs to: N/S ride the vertical lane, E/W the horizontal. */
+function laneFor(dir: Dir): 'v' | 'h' {
+  return dir === 'N' || dir === 'S' ? 'v' : 'h'
+}
+
+/** The cardinal direction from cell A to cell B if they are orthogonally adjacent, else null. */
+function dirBetween(ax: number, ay: number, bx: number, by: number): Dir | null {
+  if (bx === ax && by === ay - 1) return 'N'
+  if (bx === ax + 1 && by === ay) return 'E'
+  if (bx === ax && by === ay + 1) return 'S'
+  if (bx === ax - 1 && by === ay) return 'W'
+  return null
 }
 
 // A village's three input sides, one per requirement, given its output facing:
@@ -149,6 +194,7 @@ export function step(state: SimState): SimState {
   const tick = state.tick + 1
   const { machines, items, buffers, stores, townHalls, sellerBuffers, prices, online } = state
   const splitterCursors = state.splitterCursors ?? new Map<string, number>()
+  const crossovers = state.crossovers ?? new Map<string, CrossoverState>()
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
 
@@ -173,14 +219,53 @@ export function step(state: SimState): SimState {
     }
   }
 
-  /** The item value a ready machine at `key` would send this tick. */
-  const emittedValue = (key: string): string | undefined => {
+  // The item (if any) a crossover at `key` is offering out of side `dir`: the
+  // lane on that axis, but only when its held item's stored exit matches `dir`
+  // (an item bound for the far end is not being offered out of the near one).
+  const crossoverOut = (key: string, dir: Dir): string | undefined => {
+    const cs = crossovers.get(key)
+    if (!cs) return undefined
+    const lane = laneFor(dir) === 'v' ? cs.v : cs.h
+    return lane && lane.out === dir ? lane.item : undefined
+  }
+
+  // Direction-aware source query: is the machine at `key` offering an item out of
+  // side `dir` this tick? Unifies "has something to send" with "faces that way",
+  // so a crossover (a distinct item per lane) and a splitter (one item out of its
+  // round-robin-chosen side) are matched by the side a consumer sees, not by a
+  // single fixed `m.dir`.
+  const readyOut = (key: string, dir: Dir): boolean => {
+    const m = machines.get(key)
+    if (!m) return false
+    switch (m.kind) {
+      case 'belt':
+        return m.dir === dir && items.has(key)
+      case 'splitter':
+        return splitterChosenDir(key) === dir
+      case 'spawner':
+        return m.dir === dir && spawnerDue(m, tick)
+      case 'processor':
+      case 'combiner':
+      case 'village':
+        return m.dir === dir && buf(key)?.out != null
+      case 'storage':
+        return m.dir === dir && (stores.get(key)?.count ?? 0) > 0
+      case 'crossover':
+        return crossoverOut(key, dir) !== undefined
+      default:
+        return false // sellers / town halls only consume
+    }
+  }
+
+  // The item value a source at `key` would send out of side `dir`. Callers gate
+  // on `readyOut` first, so for single-output kinds `dir` already matches; only a
+  // crossover needs it to pick the right lane.
+  const valueOut = (key: string, dir: Dir): string | undefined => {
     const m = machines.get(key)
     if (!m) return undefined
     switch (m.kind) {
-      case 'belt':
-      case 'splitter':
-        return items.get(key)
+      case 'crossover':
+        return crossoverOut(key, dir)
       case 'spawner':
         return CATALOG_BY_ID[m.catalogId]?.outputItem
       case 'processor':
@@ -190,47 +275,57 @@ export function step(state: SimState): SimState {
       case 'storage':
         return stores.get(key)?.item ?? undefined
       default:
-        return undefined
+        return items.get(key) // belt / splitter carry a single cell item
     }
   }
 
-  // The side a machine at `key` is currently emitting out of. For most kinds
-  // that is simply their fixed facing; a splitter's varies per tick with its
-  // round-robin choice (null when it has nothing to send or every side is
-  // blocked), so all feeder matching goes through here rather than `m.dir`.
-  const sourceOutDir = (m: Machine, key: string): Dir | null =>
-    m.kind === 'splitter' ? splitterChosenDir(key) : m.dir
+  // Will the item a source at `key` offers out of side `dir` actually leave this
+  // tick (the downstream cell accepts it)? Mirrors `willEmit` but per-side, so a
+  // crossover lane and a splitter's chosen side resolve independently.
+  const willLeaveOut = (key: string, dir: Dir): boolean => {
+    const m = machines.get(key)
+    if (!m) return false
+    if (m.kind === 'crossover') return crossoverWillLeave(key, dir)
+    if (m.kind === 'splitter') return splitterChosenDir(key) === dir
+    return m.dir === dir && willEmit(key)
+  }
+
+  // The value that would arrive at sink `tm` from `fromKey` this tick — resolves
+  // the direction the source emits toward the sink so a crossover feeder picks
+  // the right lane.
+  const incomingValue = (fromKey: string, tm: Machine): string | undefined => {
+    const fm = machines.get(fromKey)
+    if (!fm) return undefined
+    const dir = dirBetween(fm.x, fm.y, tm.x, tm.y)
+    return dir ? valueOut(fromKey, dir) : undefined
+  }
 
   // The single winning source that will feed target cell (tx,ty) this tick, by
-  // fixed N,E,S,W priority among neighbours that point in and are ready. Used for
-  // any single-input sink (belt, storage, seller).
+  // fixed N,E,S,W priority among neighbours that offer an item toward it. Used
+  // for any single-input sink (belt, storage, seller, town hall).
   const winningFeeder = (tx: number, ty: number): string | null => {
     for (const nb of INCOMING) {
       const key = cellKey(tx + nb.dx, ty + nb.dy)
-      const m = machines.get(key)
-      if (!m || sourceOutDir(m, key) !== nb.out) continue
-      if (readyToEmit(key)) return key
+      if (readyOut(key, nb.out)) return key
     }
     return null
   }
 
-  // A processor's input is the cell directly behind it (opposite its facing);
-  // that neighbour must point into the processor (same facing) and be ready.
+  // A processor/splitter's input is the cell directly behind it (opposite its
+  // facing); that neighbour must offer an item toward the machine (same facing).
   const backFeeder = (m: Machine): string | null => {
     const { dx, dy } = dirDelta(OPPOSITE[m.dir])
     const key = cellKey(m.x + dx, m.y + dy)
-    const nb = machines.get(key)
-    return nb && sourceOutDir(nb, key) === m.dir && readyToEmit(key) ? key : null
+    return readyOut(key, m.dir) ? key : null
   }
 
-  // A combiner's slot-`slot` feeder: the neighbour on that input side, pointing
-  // inward and ready.
+  // A combiner's slot-`slot` feeder: the neighbour on that input side offering an
+  // item inward (toward the combiner).
   const combinerFeeder = (m: Machine, slot: 0 | 1): string | null => {
     const sideDir = inputDirs(m.dir)[slot]
     const { dx, dy } = dirDelta(sideDir)
     const key = cellKey(m.x + dx, m.y + dy)
-    const nb = machines.get(key)
-    return nb && sourceOutDir(nb, key) === OPPOSITE[sideDir] && readyToEmit(key) ? key : null
+    return readyOut(key, OPPOSITE[sideDir]) ? key : null
   }
 
   const combinerSlotForFeeder = (m: Machine, fromKey: string): 0 | 1 | -1 => {
@@ -239,14 +334,13 @@ export function step(state: SimState): SimState {
     return -1
   }
 
-  // A village's slot-`slot` feeder: the neighbour on that input side, pointing
-  // inward and ready. Mirrors combinerFeeder but over three sides.
+  // A village's slot-`slot` feeder: the neighbour on that input side offering an
+  // item inward. Mirrors combinerFeeder but over three sides.
   const villageFeeder = (m: Machine, slot: 0 | 1 | 2): string | null => {
     const sideDir = villageInputDirs(m.dir)[slot]
     const { dx, dy } = dirDelta(sideDir)
     const key = cellKey(m.x + dx, m.y + dy)
-    const nb = machines.get(key)
-    return nb && sourceOutDir(nb, key) === OPPOSITE[sideDir] && readyToEmit(key) ? key : null
+    return readyOut(key, OPPOSITE[sideDir]) ? key : null
   }
 
   const villageSlotForFeeder = (m: Machine, fromKey: string): 0 | 1 | 2 | -1 => {
@@ -262,12 +356,33 @@ export function step(state: SimState): SimState {
   const emitMemo = new Map<string, boolean>()
   const inProgress = new Set<string>()
 
+  // Per-lane emission resolution for a crossover, memoized by `cell|exitSide`. A
+  // lane's item leaves iff the cell it exits into accepts it; the in-progress set
+  // breaks cycles (a downstream path that loops back through this same lane reads
+  // "stays put" rather than recursing forever), exactly as `willEmit` does.
+  const crossLeaveMemo = new Map<string, boolean>()
+  const crossLeaveInProgress = new Set<string>()
+  function crossoverWillLeave(key: string, outDir: Dir): boolean {
+    const m = machines.get(key)
+    if (!m || crossoverOut(key, outDir) === undefined) return false
+    const memoKey = `${key}|${outDir}`
+    const memo = crossLeaveMemo.get(memoKey)
+    if (memo !== undefined) return memo
+    if (crossLeaveInProgress.has(memoKey)) return false
+    crossLeaveInProgress.add(memoKey)
+    const { dx, dy } = dirDelta(outDir)
+    const ok = accepts(cellKey(m.x + dx, m.y + dy), key)
+    crossLeaveInProgress.delete(memoKey)
+    crossLeaveMemo.set(memoKey, ok)
+    return ok
+  }
+
   // Memoized round-robin resolution for a splitter: the output side its held
   // item will leave through this tick, or null if it has no item or every
   // candidate side is blocked. Sides are tried from the cursor onward and the
   // first whose neighbour accepts wins. While a side is under test,
   // `chosenInProgress` holds it so that a downstream acceptance check which loops
-  // back through this splitter (via winningFeeder → sourceOutDir) sees the same
+  // back through this splitter (via winningFeeder → readyOut) sees the same
   // facing instead of recursing forever.
   const chosenMemo = new Map<string, Dir | null>()
   const chosenInProgress = new Map<string, Dir>()
@@ -342,14 +457,14 @@ export function step(state: SimState): SimState {
         // mismatch is rejected — it back-pressures rather than becoming junk.
         const slot = villageSlotForFeeder(tm, fromKey)
         if (slot < 0) return false
-        const incoming = emittedValue(fromKey)
+        const incoming = incomingValue(fromKey, tm)
         if (incoming === undefined || !villageSlotAccepts(slot, incoming)) return false
         return villageSlotFree(targetKey, slot)
       }
       case 'storage': {
         if (winningFeeder(tm.x, tm.y) !== fromKey) return false
         const store = stores.get(targetKey)
-        const incoming = emittedValue(fromKey)
+        const incoming = incomingValue(fromKey, tm)
         if (incoming === undefined) return false
         const locked = store?.item ?? null
         if (locked !== null && locked !== incoming) return false // wrong type → reject
@@ -372,8 +487,26 @@ export function step(state: SimState): SimState {
         // A non-villager on its feeder is rejected (back-pressures) instead of
         // being silently eaten.
         if (winningFeeder(tm.x, tm.y) !== fromKey) return false
-        const incoming = emittedValue(fromKey)
+        const incoming = incomingValue(fromKey, tm)
         return incoming !== undefined && categoryOf(incoming) === 'villager'
+      }
+      case 'crossover': {
+        // Feeder-inferred pass-through: an item entering from the source's side
+        // exits the OPPOSITE side, riding the lane for that axis. Accept when that
+        // lane is free (or its held item leaves this tick). If the opposite end is
+        // ALSO offering into this lane, it's a head-on jam with no exit for either
+        // — reject, so both feeders back up.
+        const fm = machines.get(fromKey)
+        if (!fm) return false
+        const side = dirBetween(tm.x, tm.y, fm.x, fm.y) // side the source sits on
+        if (side === null) return false
+        const outDir = OPPOSITE[side]
+        const cs = crossovers.get(targetKey)
+        const held = laneFor(side) === 'v' ? cs?.v ?? null : cs?.h ?? null
+        if (held && !(held.out === outDir && crossoverWillLeave(targetKey, outDir))) return false
+        const { dx, dy } = dirDelta(outDir)
+        if (readyOut(cellKey(tm.x + dx, tm.y + dy), side)) return false // opposite end feeds too
+        return true
       }
       default:
         return false
@@ -414,12 +547,18 @@ export function step(state: SimState): SimState {
   let nextTownHalls = townHalls
   const nextSellerBuffers = new Map<string, Record<string, number>>(sellerBuffers)
   const nextSplitterCursors = new Map<string, number>()
+  const nextCrossovers = new Map<string, CrossoverState>()
   let money = state.money
 
-  // The item (if any) that will actually arrive into single-input sink `key`.
+  // The item (if any) that will actually arrive into single-input sink (tx,ty):
+  // the highest-priority neighbour offering toward it whose item actually leaves.
   const arrivingItem = (tx: number, ty: number): string | undefined => {
-    const winner = winningFeeder(tx, ty)
-    return winner && willEmit(winner) ? emittedValue(winner) : undefined
+    for (const nb of INCOMING) {
+      const key = cellKey(tx + nb.dx, ty + nb.dy)
+      if (!readyOut(key, nb.out)) continue
+      return willLeaveOut(key, nb.out) ? valueOut(key, nb.out) : undefined
+    }
+    return undefined
   }
 
   for (const m of machines.values()) {
@@ -440,7 +579,7 @@ export function step(state: SimState): SimState {
         // one from behind this same tick (matching the belt hand-off).
         let value = items.has(key) && !emits ? items.get(key) : undefined
         const feeder = backFeeder(m)
-        if (feeder && willEmit(feeder)) value = emittedValue(feeder) ?? value
+        if (feeder && willLeaveOut(feeder, m.dir)) value = valueOut(feeder, m.dir) ?? value
         if (value !== undefined) nextItems.set(key, value)
         // Advance the cursor past the side just used so the next item prefers a
         // different side; otherwise carry the current cursor forward unchanged.
@@ -453,6 +592,35 @@ export function step(state: SimState): SimState {
         }
         break
       }
+      case 'crossover': {
+        const cs = crossovers.get(key)
+        let v = cs?.v ?? null
+        let h = cs?.h ?? null
+        // Emit: a lane whose held item leaves this tick clears.
+        if (v && crossoverWillLeave(key, v.out)) v = null
+        if (h && crossoverWillLeave(key, h.out)) h = null
+        // Intake: pull a fresh item into a now-free lane from its single, non-
+        // conflicting input side. Both ends of an axis offering = head-on jam =
+        // no intake (they back up); neither offering = idle.
+        const intake = (ends: [Dir, Dir]): CrossoverLane | null => {
+          const offering = ends.filter((e) => {
+            const d = dirDelta(e)
+            return readyOut(cellKey(m.x + d.dx, m.y + d.dy), OPPOSITE[e])
+          })
+          if (offering.length !== 1) return null
+          const inSide = offering[0]
+          const outDir = OPPOSITE[inSide]
+          const d = dirDelta(inSide)
+          const nk = cellKey(m.x + d.dx, m.y + d.dy)
+          if (!willLeaveOut(nk, outDir)) return null // source blocked this tick
+          const item = valueOut(nk, outDir)
+          return item !== undefined ? { item, out: outDir } : null
+        }
+        if (v === null) v = intake(['N', 'S'])
+        if (h === null) h = intake(['E', 'W'])
+        if (v || h) nextCrossovers.set(key, { v, h })
+        break
+      }
       case 'processor': {
         const b = buf(key) ?? { in: [null], out: null }
         const emit = willEmit(key)
@@ -461,7 +629,7 @@ export function step(state: SimState): SimState {
         const out = consumes ? transformProcessor(b.in[0]!) : emit ? null : b.out
         let in0: string | null = consumes ? null : b.in[0]
         const feeder = backFeeder(m)
-        if (feeder && willEmit(feeder)) in0 = emittedValue(feeder) ?? in0
+        if (feeder && willLeaveOut(feeder, m.dir)) in0 = valueOut(feeder, m.dir) ?? in0
         if (in0 != null || out != null) nextBuffers.set(key, { in: [in0], out })
         break
       }
@@ -476,7 +644,8 @@ export function step(state: SimState): SimState {
         ]
         for (const slot of [0, 1] as const) {
           const feeder = combinerFeeder(m, slot)
-          if (feeder && willEmit(feeder)) next[slot] = emittedValue(feeder) ?? next[slot]
+          const inDir = OPPOSITE[inputDirs(m.dir)[slot]] // side the source emits toward
+          if (feeder && willLeaveOut(feeder, inDir)) next[slot] = valueOut(feeder, inDir) ?? next[slot]
         }
         if (next[0] != null || next[1] != null || out != null) {
           nextBuffers.set(key, { in: next, out })
@@ -494,7 +663,8 @@ export function step(state: SimState): SimState {
         const next: (string | null)[] = consumes ? [null, null, null] : [b.in[0], b.in[1], b.in[2]]
         for (const slot of [0, 1, 2] as const) {
           const feeder = villageFeeder(m, slot)
-          if (feeder && willEmit(feeder)) next[slot] = emittedValue(feeder) ?? next[slot]
+          const inDir = OPPOSITE[villageInputDirs(m.dir)[slot]] // side the source emits toward
+          if (feeder && willLeaveOut(feeder, inDir)) next[slot] = valueOut(feeder, inDir) ?? next[slot]
         }
         if (next.some((s) => s != null) || out != null) nextBuffers.set(key, { in: next, out })
         break
@@ -550,6 +720,7 @@ export function step(state: SimState): SimState {
     townHalls: nextTownHalls,
     sellerBuffers: nextSellerBuffers,
     splitterCursors: nextSplitterCursors,
+    crossovers: nextCrossovers,
     money,
     prices,
     online,

@@ -14,7 +14,7 @@ import { CATALOG_BY_ID } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
 import { loadSave, makeSave, migrateSave, parseSave, writeSave, type GameSave } from '../game/save'
-import { step, type MachineBuffer, type StorageState, type TownHallState } from '../game/tick'
+import { step, type CrossoverState, type MachineBuffer, type StorageState, type TownHallState } from '../game/tick'
 import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 import { computeOffline, type AwaySummary } from '../game/offline'
 import { computeTownModifiers, type TownModifiers } from '../game/town'
@@ -44,6 +44,8 @@ export interface GameState {
   townModifiers: TownModifiers
   /** Round-robin cursors for splitter cells: cell key `x,y` → next side index. */
   splitterCursors: Map<string, number>
+  /** Lane contents for crossover cells: cell key `x,y` → {v, h} lanes. */
+  crossovers: Map<string, CrossoverState>
   /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
   money: number
   /** Stock-market state: prices, last-10 histories, and last update time. */
@@ -211,6 +213,7 @@ export const useGameStore = create<GameState>((set, get) => {
       townHalls: nextTownHalls,
       townModifiers: computeTownModifiers(nextTownHalls),
       splitterCursors: new Map(),
+      crossovers: new Map(),
       money: save.money,
       market: save.market ? fillHistory(save.market) : seedMarket(Date.now()),
       savedAt: save.savedAt,
@@ -231,6 +234,7 @@ export const useGameStore = create<GameState>((set, get) => {
     townHalls,
     townModifiers: computeTownModifiers(townHalls),
     splitterCursors: new Map(),
+    crossovers: new Map(),
     money,
     market,
     online: true,
@@ -294,7 +298,7 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, items, buffers, stores, townHalls, splitterCursors, selected } = get()
+      const { world: w, chunks: c, items, buffers, stores, townHalls, splitterCursors, crossovers, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
@@ -304,6 +308,7 @@ export const useGameStore = create<GameState>((set, get) => {
       buffers.delete(key)
       stores.delete(key)
       splitterCursors.delete(key)
+      crossovers.delete(key)
       // Deleting a town hall discards its banked villagers, which drops its
       // contribution to the global levers — so recompute them.
       if (townHalls.delete(key)) {
@@ -363,6 +368,7 @@ export const useGameStore = create<GameState>((set, get) => {
         items: new Map(), // in-flight belt items vanish across a time skip
         buffers: new Map(),
         splitterCursors: new Map(),
+        crossovers: new Map(),
         savedAt: now,
         lastAway: worthShowing ? result.summary : get().lastAway,
       })
@@ -372,7 +378,7 @@ export const useGameStore = create<GameState>((set, get) => {
     dismissAway: () => set({ lastAway: null }),
 
     advanceTick: () => {
-      const { world: w, items, buffers, stores, townHalls, splitterCursors, money, market, online, tick, townModifiers } = get()
+      const { world: w, items, buffers, stores, townHalls, splitterCursors, crossovers, money, market, online, tick, townModifiers } = get()
       // Merchants (and the tiny per-villager base) raise every live sale price;
       // scaling the price snapshot applies it without touching the seller code.
       const sellMult = townModifiers.sellMultiplier
@@ -386,6 +392,7 @@ export const useGameStore = create<GameState>((set, get) => {
         townHalls,
         sellerBuffers: EMPTY_SELLER_BUFFERS, // live play sells online; never buffers
         splitterCursors,
+        crossovers,
         money,
         prices,
         online,
@@ -402,6 +409,7 @@ export const useGameStore = create<GameState>((set, get) => {
           ? { townHalls: nextSim.townHalls, townModifiers: computeTownModifiers(nextSim.townHalls) }
           : null),
         splitterCursors: nextSim.splitterCursors ?? new Map(),
+        crossovers: nextSim.crossovers ?? new Map(),
         money: nextSim.money,
         tick: nextSim.tick,
       })
@@ -444,6 +452,7 @@ export const useGameStore = create<GameState>((set, get) => {
         townHalls: new Map(),
         townModifiers: computeTownModifiers(new Map()),
         splitterCursors: new Map(),
+        crossovers: new Map(),
         money: config.startingMoney,
         market: seedMarket(now),
         online: true,

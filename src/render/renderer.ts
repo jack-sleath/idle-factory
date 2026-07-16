@@ -90,9 +90,12 @@ export function renderScene(
     }
     // Non-belt machines get a chevron on the output edge to show orientation. A
     // splitter emits from its three non-input sides, so it gets a chevron on each.
+    // A crossover passes straight through on both axes, so it gets all four.
     if (t.kind === 'splitter') {
       const cw = nextDir(t.dir)
       for (const d of [t.dir, cw, nextDir(nextDir(cw))]) drawChevron(ctx, sx, sy, cell, d)
+    } else if (t.kind === 'crossover') {
+      for (const d of ['N', 'E', 'S', 'W'] as Dir[]) drawChevron(ctx, sx, sy, cell, d)
     } else {
       drawChevron(ctx, sx, sy, cell, t.dir)
     }

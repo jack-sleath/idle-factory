@@ -12,6 +12,7 @@ export type MachineKind =
   | 'storage'
   | 'seller'
   | 'splitter'
+  | 'crossover'
   | 'village'
   | 'townhall'
 
