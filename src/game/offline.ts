@@ -56,6 +56,10 @@ function outputDirs(m: Machine): Dir[] {
     const cw = nextDir(m.dir)
     return [m.dir, cw, nextDir(nextDir(cw))]
   }
+  // A crossover passes items straight through on both axes, so for line-tracing
+  // it is a four-way connector. This can over-connect two lines that merely cross
+  // (a conservative approximation, fine for the idealised offline model).
+  if (m.kind === 'crossover') return ['N', 'E', 'S', 'W']
   return [m.dir] // belt / processor / combiner / storage / spawner emit out their facing
 }
 
@@ -73,6 +77,8 @@ function acceptsFrom(m: Machine, incoming: Dir): boolean {
     case 'processor':
     case 'splitter':
       return incoming === m.dir // only from directly behind → same travel direction
+    case 'crossover':
+      return true // pass-through on both axes; accepts an item from any side
     case 'combiner':
       return combinerInputDirs(m.dir).includes(OPPOSITE[incoming]) // either input side
     case 'village':

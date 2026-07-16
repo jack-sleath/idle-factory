@@ -63,6 +63,14 @@
     "defaultDir": "E"
   },
   {
+    "id": "crossover-basic",
+    "kind": "crossover",
+    "name": "Crossover",
+    "emoji": "➕",
+    "cost": 40,
+    "defaultDir": "E"
+  },
+  {
     "id": "village-hut",
     "kind": "village",
     "name": "Village Hut",

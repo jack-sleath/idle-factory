@@ -67,7 +67,7 @@ export function GameCanvas() {
 
     const loop = () => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, buffers, stores, selected } = useGameStore.getState()
+      const { camera, world, chunks, items, buffers, stores, crossovers, selected } = useGameStore.getState()
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
@@ -102,6 +102,21 @@ export function GameCanvas() {
         if (!held) continue
         const emoji = ITEMS_BY_ID[held]?.emoji
         if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
+      }
+
+      // Crossovers carry two items at once (one per lane); nudge them apart so
+      // both are visible instead of overlapping on the shared cell.
+      for (const [key, cs] of crossovers) {
+        const { x, y } = parseCellKey(key)
+        if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
+        if (cs.v) {
+          const emoji = ITEMS_BY_ID[cs.v.item]?.emoji
+          if (emoji) itemTiles.push({ cx: x, cy: y - 0.16, emoji })
+        }
+        if (cs.h) {
+          const emoji = ITEMS_BY_ID[cs.h.item]?.emoji
+          if (emoji) itemTiles.push({ cx: x + 0.16, cy: y, emoji })
+        }
       }
 
       // Storage shows the item type it's holding, so a filling store doesn't
