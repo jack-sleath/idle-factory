@@ -6,6 +6,7 @@ import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
 import { TownHallPanel } from './components/TownHallPanel'
 import { MarketPanel } from './components/MarketPanel'
+import { RecipeBook } from './components/RecipeBook'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
 import { Onboarding } from './components/Onboarding'
@@ -51,6 +52,7 @@ export default function App() {
   useMarketLoop()
   const money = useGameStore((s) => s.money)
   const [marketOpen, setMarketOpen] = useState(false)
+  const [recipeOpen, setRecipeOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
 
@@ -74,6 +76,16 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={`hud__btn${recipeOpen ? ' is-active' : ''}`}
+            aria-pressed={recipeOpen}
+            aria-label="Recipe book"
+            title="Recipe book"
+            onClick={() => setRecipeOpen((open) => !open)}
+          >
+            <Emoji emoji="📖" size={18} label="recipe book" />
+          </button>
+          <button
+            type="button"
             className={`hud__btn${saveOpen ? ' is-active' : ''}`}
             aria-pressed={saveOpen}
             aria-label="Saves"
@@ -94,6 +106,7 @@ export default function App() {
         <StoragePanel />
         <TownHallPanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
+        {recipeOpen && <RecipeBook onClose={() => setRecipeOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
         <AwaySummary />
         <Onboarding />
