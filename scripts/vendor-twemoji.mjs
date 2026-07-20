@@ -49,7 +49,7 @@ const items = JSON.parse(fs.readFileSync(path.join(dataDir, 'items.json'), 'utf8
 const catalog = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'))
 
 const UI_CHROME = [
-  '🏭', '🔍', '🔄', '❌', '📈', '💾', '❓',
+  '🏭', '🔍', '🔄', '❌', '📈', '💾', '❓', '📖',
   // Market-panel category section icons (those not already in the data set).
   '🍽️', '⚔️', '🧱',
 ]
