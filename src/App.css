@@ -23,17 +23,24 @@
   gap: 8px;
   font-weight: 600;
   font-size: 16px;
+  min-width: 0; /* allow the label to shrink/truncate before it shoves the controls off-screen */
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .hud__hint {
   font-size: 12px;
   opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hud__right {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 auto; /* the controls (incl. Recipe Book) must never be pushed off the edge */
 }
 
 .hud__btn {
@@ -75,6 +82,22 @@
   display: inline-block;
   min-width: 6ch;
   text-align: right;
+}
+
+/* On phone-width viewports (incl. the installed PWA's standalone window) the
+   title + hint + controls overflow a single row, which clipped the rightmost
+   HUD items — the Recipe Book button and money readout — off the right edge.
+   Drop the decorative hint and tighten spacing so every control stays on-screen. */
+@media (max-width: 560px) {
+  .hud {
+    gap: 8px;
+  }
+  .hud__hint {
+    display: none;
+  }
+  .hud__right {
+    gap: 8px;
+  }
 }
 
 .stage {
