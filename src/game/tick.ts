@@ -111,6 +111,15 @@ export interface SimState {
    * absent maps default to empty, so it need not be seeded or persisted.
    */
   crossovers?: Map<string, CrossoverState>
+  /**
+   * channel label → FIFO queue of item ids in transit between teleporter pads.
+   * Send pads enqueue at the back; receive pads on the same channel dequeue from
+   * the front. Transient like `items`/`crossovers` (absent maps default to
+   * empty, so it need not be seeded or persisted). The 1-tick hand-off — items
+   * enqueued this tick are only visible to receivers next tick — is what keeps
+   * teleporters out of the same-tick movement recursion.
+   */
+  transit?: Map<string, string[]>
   /** Monotonic tick counter. */
   tick: number
 }
@@ -171,6 +180,22 @@ function splitterOutputOrder(dir: Dir): [Dir, Dir, Dir] {
   return [dir, cw, nextDir(nextDir(cw))]
 }
 
+/** A teleporter pad's role (send/receive), read from its catalog entry. */
+function teleporterRole(catalogId: string): 'send' | 'receive' | undefined {
+  return CATALOG_BY_ID[catalogId]?.role
+}
+
+/**
+ * Canonical channel key for a teleporter pad: trimmed and lower-cased so `" Coal "`
+ * and `"coal"` link, and empty (unlinked) becomes null. All channel lookups go
+ * through this so the matching rule lives in one place.
+ */
+function normalizeChannel(channel: string | undefined): string | null {
+  if (!channel) return null
+  const c = channel.trim().toLowerCase()
+  return c.length > 0 ? c : null
+}
+
 /** Whether a spawner is due to emit on a given tick. */
 function spawnerDue(machine: Machine, tick: number): boolean {
   const entry = CATALOG_BY_ID[machine.catalogId]
@@ -195,8 +220,43 @@ export function step(state: SimState): SimState {
   const { machines, items, buffers, stores, townHalls, sellerBuffers, prices, online } = state
   const splitterCursors = state.splitterCursors ?? new Map<string, number>()
   const crossovers = state.crossovers ?? new Map<string, CrossoverState>()
+  const transit = state.transit ?? new Map<string, string[]>()
 
   const buf = (key: string): MachineBuffer | undefined => buffers.get(key)
+
+  // Group receive (output) pads by channel so a channel with several outputs can
+  // split its queue evenly across them. Each pad's cell key gets its stable index
+  // and the network size; the index + a per-tick rotation decide which queue slot
+  // that pad claims this tick (see `receiverClaim`), so every output's decision is
+  // independent — no two claim the same item.
+  const receiversByChannel = new Map<string, string[]>()
+  for (const m of machines.values()) {
+    if (m.kind !== 'teleporter' || teleporterRole(m.catalogId) !== 'receive') continue
+    const ch = normalizeChannel(m.channel)
+    if (!ch) continue
+    const list = receiversByChannel.get(ch)
+    if (list) list.push(cellKey(m.x, m.y))
+    else receiversByChannel.set(ch, [cellKey(m.x, m.y)])
+  }
+  const receiverInfo = new Map<string, { ch: string; index: number; size: number }>()
+  for (const [ch, keys] of receiversByChannel) {
+    keys.sort() // deterministic order → stable slot assignment across ticks
+    keys.forEach((k, index) => receiverInfo.set(k, { ch, index, size: keys.length }))
+  }
+
+  // The queue item (if any) a receive pad at `key` is entitled to emit this tick.
+  // Its rank in the rotated output order (rotation = tick % size) is the queue
+  // index it owns; it holds a claim only while that index is within the queue.
+  // Rotating by tick makes "who gets the front" cycle, so a scarce queue is shared
+  // evenly and a blocked output frees its slot for another next tick.
+  const receiverClaim = (key: string): string | undefined => {
+    const info = receiverInfo.get(key)
+    if (!info) return undefined
+    const q = transit.get(info.ch)
+    if (!q || q.length === 0) return undefined
+    const rank = (info.index - (tick % info.size) + info.size) % info.size
+    return rank < q.length ? q[rank] : undefined
+  }
 
   /** Does the machine at `key` currently have an item/output ready to send? */
   const readyToEmit = (key: string): boolean => {
@@ -214,6 +274,10 @@ export function step(state: SimState): SimState {
         return buf(key)?.out != null
       case 'storage':
         return (stores.get(key)?.count ?? 0) > 0
+      case 'teleporter':
+        // Only the receive pad emits (from its channel queue); the send pad is a
+        // pure sink, so it never has anything of its own to send.
+        return teleporterRole(m.catalogId) === 'receive' && receiverClaim(key) !== undefined
       default:
         return false // sellers only consume
     }
@@ -252,6 +316,8 @@ export function step(state: SimState): SimState {
         return m.dir === dir && (stores.get(key)?.count ?? 0) > 0
       case 'crossover':
         return crossoverOut(key, dir) !== undefined
+      case 'teleporter':
+        return m.dir === dir && teleporterRole(m.catalogId) === 'receive' && receiverClaim(key) !== undefined
       default:
         return false // sellers / town halls only consume
     }
@@ -274,6 +340,8 @@ export function step(state: SimState): SimState {
         return buf(key)?.out ?? undefined
       case 'storage':
         return stores.get(key)?.item ?? undefined
+      case 'teleporter':
+        return receiverClaim(key) // undefined for a send pad (no claim)
       default:
         return items.get(key) // belt / splitter carry a single cell item
     }
@@ -508,6 +576,18 @@ export function step(state: SimState): SimState {
         if (readyOut(cellKey(tm.x + dx, tm.y + dy), side)) return false // opposite end feeds too
         return true
       }
+      case 'teleporter': {
+        // Only the send pad accepts adjacent input (the receive pad's items come
+        // from the channel, never a neighbour). It banks like a seller — any item
+        // from its winning feeder — but into the channel queue, and back-pressures
+        // once that queue is full (or if the pad is unlinked / has no channel).
+        if (teleporterRole(tm.catalogId) !== 'send') return false
+        if (winningFeeder(tm.x, tm.y) !== fromKey) return false
+        const ch = normalizeChannel(tm.channel)
+        if (ch === null) return false
+        if (incomingValue(fromKey, tm) === undefined) return false
+        return (transit.get(ch)?.length ?? 0) < config.teleporterQueueCapacity
+      }
       default:
         return false
     }
@@ -709,8 +789,49 @@ export function step(state: SimState): SimState {
         break
       }
       // spawner: emits into neighbours but stores nothing itself.
+      // teleporter: no per-cell state — its transit queues are resolved below.
     }
   }
+
+  // Resolve teleporter transit in one coordinated pass, since a channel's queue is
+  // shared across pads (unlike every other machine, which owns its own state).
+  // Start from a copy of each queue, remove the slots receive pads actually
+  // emitted this tick, then append what send pads consumed (to the back, so the
+  // 1-tick latency holds). Empty channels are dropped so the map doesn't grow.
+  const nextTransit = new Map<string, string[]>()
+  for (const [ch, q] of transit) nextTransit.set(ch, q.slice())
+
+  // Dequeue: each receive pad claims one queue index (its rotated rank); if that
+  // claimed item left its cell this tick (`willEmit`), remove that index. Multiple
+  // outputs on a channel claim distinct indices, so removals never collide.
+  for (const [ch, keys] of receiversByChannel) {
+    const q = nextTransit.get(ch)
+    if (!q || q.length === 0) continue
+    const size = keys.length
+    const consumed = new Set<number>()
+    for (let i = 0; i < size; i++) {
+      const rank = (i - (tick % size) + size) % size
+      if (rank < q.length && willEmit(keys[i])) consumed.add(rank)
+    }
+    if (consumed.size > 0) nextTransit.set(ch, q.filter((_, idx) => !consumed.has(idx)))
+  }
+
+  // Enqueue: each send pad that received an item this tick appends it to its
+  // channel. `accepts` already gated on capacity, so this only fires when there
+  // was room. Appending after the dequeue keeps new arrivals invisible until next
+  // tick.
+  for (const m of machines.values()) {
+    if (m.kind !== 'teleporter' || teleporterRole(m.catalogId) !== 'send') continue
+    const ch = normalizeChannel(m.channel)
+    if (!ch) continue
+    const incoming = arrivingItem(m.x, m.y)
+    if (incoming === undefined) continue
+    const q = nextTransit.get(ch)
+    if (q) q.push(incoming)
+    else nextTransit.set(ch, [incoming])
+  }
+
+  for (const [ch, q] of nextTransit) if (q.length === 0) nextTransit.delete(ch)
 
   return {
     machines,
@@ -721,6 +842,7 @@ export function step(state: SimState): SimState {
     sellerBuffers: nextSellerBuffers,
     splitterCursors: nextSplitterCursors,
     crossovers: nextCrossovers,
+    transit: nextTransit,
     money,
     prices,
     online,

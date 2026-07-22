@@ -2,7 +2,7 @@ import type { Dir, Machine } from './types'
 import { step, type SimState, type StorageState } from './tick'
 import { catchUpMarket, livePrice, type Market, type Rng } from './market'
 import { IDENTITY_TOWN_MODIFIERS, type TownModifiers } from './town'
-import { storageCapacity } from '../data'
+import { CATALOG_BY_ID, storageCapacity } from '../data'
 import { config } from '../data/config'
 import { cellKey, dirDelta, nextDir } from './world'
 
@@ -51,6 +51,10 @@ function combinerInputDirs(dir: Dir): [Dir, Dir] {
 /** The sides a machine offers items out of. Mirrors tick.ts movement rules. */
 function outputDirs(m: Machine): Dir[] {
   if (m.kind === 'seller' || m.kind === 'townhall') return []
+  // A send pad consumes into its channel (no adjacent output); a receive pad emits
+  // out its facing. Storage-chain tracing therefore stops at a teleporter — the
+  // two sides are traced as separate chains (a safe, conservative approximation).
+  if (m.kind === 'teleporter') return CATALOG_BY_ID[m.catalogId]?.role === 'receive' ? [m.dir] : []
   if (m.kind === 'splitter') {
     // Behind (opposite dir) is the input; it offers out the other three sides.
     const cw = nextDir(m.dir)
@@ -85,6 +89,10 @@ function acceptsFrom(m: Machine, incoming: Dir): boolean {
       return incoming !== OPPOSITE[m.dir] // accept on the three non-output (input) sides
     case 'townhall':
       return true // a villager sink; accepts a neighbour pointing in from any side
+    case 'teleporter':
+      // Send pad accepts from any side (like a seller); receive pad never takes
+      // an adjacent item (its stock arrives through the channel).
+      return CATALOG_BY_ID[m.catalogId]?.role === 'send'
     default:
       return false // spawner and anything else never receive
   }

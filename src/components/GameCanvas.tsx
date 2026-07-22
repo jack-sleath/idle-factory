@@ -83,6 +83,7 @@ export function GameCanvas() {
         emoji: CATALOG_BY_ID[m.catalogId]?.emoji ?? '❓',
         kind: m.kind,
         dir: m.dir,
+        label: m.kind === 'teleporter' ? m.channel : undefined,
       }))
 
       const itemTiles: RenderItem[] = []

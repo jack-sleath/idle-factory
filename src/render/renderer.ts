@@ -10,6 +10,8 @@ export interface RenderTile {
   emoji: string
   kind: MachineKind
   dir: Dir
+  /** Optional caption drawn under the sprite (teleporter channel label). */
+  label?: string
 }
 
 /** An item riding a cell, drawn on top of machines. */
@@ -99,6 +101,8 @@ export function renderScene(
     } else {
       drawChevron(ctx, sx, sy, cell, t.dir)
     }
+
+    if (t.label) drawLabel(ctx, sx, sy, cell, t.label)
   }
 
   // Items ride on top of the belt cells, drawn a little smaller.
@@ -145,6 +149,28 @@ function drawChevron(
   ctx.lineTo(cxp - px * half, cyp - py * half)
   ctx.closePath()
   ctx.fill()
+}
+
+/** Draws a small centred caption just below a cell's sprite (channel labels). */
+function drawLabel(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  cell: number,
+  text: string,
+): void {
+  const size = Math.max(8, Math.round(cell * 0.16))
+  ctx.font = `600 ${size}px system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const label = text.length > 12 ? `${text.slice(0, 11)}…` : text
+  const w = ctx.measureText(label).width
+  const py = sy + cell * 0.34
+  const padX = size * 0.4
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
+  ctx.fillRect(sx - w / 2 - padX, py - size * 0.7, w + padX * 2, size * 1.4)
+  ctx.fillStyle = ACCENT
+  ctx.fillText(label, sx, py)
 }
 
 /** Draws grid lines aligned to world cell boundaries across the viewport. */

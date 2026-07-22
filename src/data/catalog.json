@@ -71,6 +71,26 @@
     "defaultDir": "E"
   },
   {
+    "id": "teleporter-in",
+    "kind": "teleporter",
+    "role": "send",
+    "name": "Teleporter (In)",
+    "emoji": "📥",
+    "cost": 500000,
+    "costGrowth": 1.25,
+    "defaultDir": "E"
+  },
+  {
+    "id": "teleporter-out",
+    "kind": "teleporter",
+    "role": "receive",
+    "name": "Teleporter (Out)",
+    "emoji": "📤",
+    "cost": 500000,
+    "costGrowth": 1.25,
+    "defaultDir": "E"
+  },
+  {
     "id": "village-hut",
     "kind": "village",
     "name": "Village Hut",

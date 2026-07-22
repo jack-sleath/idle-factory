@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { step, type CrossoverState, type MachineBuffer, type SimState, type StorageState } from '../src/game/tick'
 import { cellKey } from '../src/game/world'
 import type { Dir, Machine, MachineKind } from '../src/game/types'
+import { config } from '../src/data/config'
 
 function machine(kind: MachineKind, x: number, y: number, dir: Dir, catalogId: string): Machine {
   return { id: `${x},${y}`, kind, catalogId, x, y, dir }
@@ -14,6 +15,14 @@ const storage = (x: number, y: number, dir: Dir) => machine('storage', x, y, dir
 const seller = (x: number, y: number, dir: Dir) => machine('seller', x, y, dir, 'seller-basic')
 const village = (x: number, y: number, dir: Dir) => machine('village', x, y, dir, 'village-hut')
 const townhall = (x: number, y: number, dir: Dir) => machine('townhall', x, y, dir, 'town-hall')
+const tpIn = (x: number, y: number, dir: Dir, channel: string) => ({
+  ...machine('teleporter', x, y, dir, 'teleporter-in'),
+  channel,
+})
+const tpOut = (x: number, y: number, dir: Dir, channel: string) => ({
+  ...machine('teleporter', x, y, dir, 'teleporter-out'),
+  channel,
+})
 
 function worldOf(...ms: Machine[]): Map<string, Machine> {
   const w = new Map<string, Machine>()
@@ -608,5 +617,112 @@ describe('crossover', () => {
     ])
     const s = step(st)
     expect(crossAt(s, 0, 0)?.v).toEqual({ item: 'ore', out: 'S' }) // nowhere to go → stays
+  })
+})
+
+describe('teleporter', () => {
+  const transitOf = (s: SimState, ch: string): string[] => s.transit?.get(ch) ?? []
+
+  it('sends an item across the map to a receive pad on the same channel (1-tick transit)', () => {
+    const machines = worldOf(
+      belt(0, 0, 'E'),
+      tpIn(1, 0, 'E', 'warehouse'),
+      tpOut(5, 0, 'E', 'warehouse'),
+      belt(6, 0, 'E'),
+    )
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+    // Tick 1: the send pad consumes the belt item into its channel queue.
+    s = step(s)
+    expect(itemAt(s, 0, 0)).toBeUndefined()
+    expect(transitOf(s, 'warehouse')).toEqual(['ore'])
+    expect(itemAt(s, 6, 0)).toBeUndefined() // not out yet — 1-tick latency
+    // Tick 2: the receive pad emits it onto its downstream belt; queue drains.
+    s = step(s)
+    expect(itemAt(s, 6, 0)).toBe('ore')
+    expect(transitOf(s, 'warehouse')).toEqual([])
+  })
+
+  it('keeps channels isolated — a different label never receives the item', () => {
+    const machines = worldOf(
+      belt(0, 0, 'E'),
+      tpIn(1, 0, 'E', 'coal'),
+      tpOut(5, 0, 'E', 'iron'),
+      belt(6, 0, 'E'),
+    )
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+    s = step(s)
+    s = step(s)
+    expect(transitOf(s, 'coal')).toEqual(['ore']) // sits in coal's queue…
+    expect(itemAt(s, 6, 0)).toBeUndefined() // …the 'iron' output never sees it
+  })
+
+  it('matches labels case-insensitively and ignores surrounding whitespace', () => {
+    const machines = worldOf(
+      belt(0, 0, 'E'),
+      tpIn(1, 0, 'E', '  Warehouse '),
+      tpOut(5, 0, 'E', 'warehouse'),
+      belt(6, 0, 'E'),
+    )
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+    s = step(s)
+    s = step(s)
+    expect(itemAt(s, 6, 0)).toBe('ore')
+  })
+
+  it('does not consume input while the channel queue is full (back-pressure, no drops)', () => {
+    const machines = worldOf(belt(0, 0, 'E'), tpIn(1, 0, 'E', 'z'))
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+    s.transit = new Map([['z', Array(config.teleporterQueueCapacity).fill('junk')]])
+    s = step(s)
+    expect(itemAt(s, 0, 0)).toBe('ore') // send pad refused → item held on the belt
+    expect(transitOf(s, 'z').length).toBe(config.teleporterQueueCapacity)
+  })
+
+  it('ignores an unlinked (blank-channel) pad', () => {
+    const machines = worldOf(belt(0, 0, 'E'), tpIn(1, 0, 'E', '   '))
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+    s = step(s)
+    expect(itemAt(s, 0, 0)).toBe('ore') // nothing consumed
+    expect(s.transit?.size ?? 0).toBe(0)
+  })
+
+  it('never lets two outputs on a channel emit the same item (no double-spend), rotating by tick', () => {
+    // Two receive pads on channel 'c', each feeding a belt to its north.
+    const machines = worldOf(
+      tpOut(0, 0, 'N', 'c'),
+      belt(0, -1, 'N'),
+      tpOut(2, 0, 'N', 'c'),
+      belt(2, -1, 'N'),
+    )
+    const seed = () => new Map([['c', ['ore']]])
+    // Sorted keys: "0,0" < "2,0" → index 0 / index 1. Emitting tick = state.tick + 1.
+    // Odd emit tick → index 1 pad (2,0); even → index 0 pad (0,0).
+    let s = mkState(machines, new Map(), 0)
+    s.transit = seed()
+    s = step(s) // emit tick 1 (odd)
+    expect(itemAt(s, 2, -1)).toBe('ore')
+    expect(itemAt(s, 0, -1)).toBeUndefined()
+    expect(transitOf(s, 'c')).toEqual([]) // exactly one copy left, not two
+
+    s = mkState(machines, new Map(), 1)
+    s.transit = seed()
+    s = step(s) // emit tick 2 (even)
+    expect(itemAt(s, 0, -1)).toBe('ore')
+    expect(itemAt(s, 2, -1)).toBeUndefined()
+  })
+
+  it('splits a full queue evenly across two outputs in one tick', () => {
+    const machines = worldOf(
+      tpOut(0, 0, 'N', 'c'),
+      belt(0, -1, 'N'),
+      tpOut(2, 0, 'N', 'c'),
+      belt(2, -1, 'N'),
+    )
+    let s = mkState(machines, new Map(), 0)
+    s.transit = new Map([['c', ['ore', 'bar']]])
+    s = step(s)
+    // Both outputs emit a distinct item this tick; the queue fully drains.
+    expect([itemAt(s, 0, -1), itemAt(s, 2, -1)].sort()).toEqual(['bar', 'ore'])
+    expect(transitOf(s, 'c')).toEqual([])
   })
 })

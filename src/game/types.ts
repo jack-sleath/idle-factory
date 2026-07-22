@@ -15,6 +15,7 @@ export type MachineKind =
   | 'crossover'
   | 'village'
   | 'townhall'
+  | 'teleporter'
 
 /**
  * A placed machine. Keyed in the world by its cell (`x,y`). `dir` is the
@@ -30,6 +31,12 @@ export interface Machine {
   x: number
   y: number
   dir: Dir
+  /**
+   * Teleporter only: the free-text channel label that links send pads to receive
+   * pads. Pads sharing a label (trimmed + case-insensitive) form one network;
+   * empty/undefined means unlinked. Persisted so links survive save/load.
+   */
+  channel?: string
 }
 
 /**
@@ -83,6 +90,13 @@ export interface CatalogEntry {
   rateTicks?: number
   /** Storage only: maximum units it can hold (M5). */
   capacity?: number
+  /**
+   * Teleporter only: whether this pad is the input (`send`, a sink that enqueues
+   * items into its channel) or the output (`receive`, a source that emits them
+   * back out). Read like `outputItem` — behaviour lives in data, not on the
+   * placed machine.
+   */
+  role?: 'send' | 'receive'
 }
 
 /** Processor recipe: one input item transforms into one output item. */
