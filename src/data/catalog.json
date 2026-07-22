@@ -241,6 +241,39 @@
     "rateTicks": 8
   },
   {
+    "id": "chicken",
+    "kind": "spawner",
+    "name": "Chicken",
+    "emoji": "🐔",
+    "cost": 50000,
+    "costGrowth": 1.15,
+    "defaultDir": "E",
+    "outputItem": "egg",
+    "rateTicks": 5
+  },
+  {
+    "id": "lemon-tree",
+    "kind": "spawner",
+    "name": "Lemon Tree",
+    "emoji": "🍋",
+    "cost": 56000,
+    "costGrowth": 1.15,
+    "defaultDir": "E",
+    "outputItem": "lemon",
+    "rateTicks": 7
+  },
+  {
+    "id": "beehive",
+    "kind": "spawner",
+    "name": "Beehive",
+    "emoji": "🐝",
+    "cost": 48000,
+    "costGrowth": 1.15,
+    "defaultDir": "E",
+    "outputItem": "honey",
+    "rateTicks": 6
+  },
+  {
     "id": "silver-mine",
     "kind": "spawner",
     "name": "Silver Mine",

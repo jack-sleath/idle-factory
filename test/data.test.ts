@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { validateData } from '../src/data/validate'
-import { combinerOutput, ITEMS, ITEMS_BY_ID, processorOutput } from '../src/data'
+import { CATALOG_BY_ID, combinerOutput, ITEMS, ITEMS_BY_ID, processorOutput } from '../src/data'
 import { ITEM_CATEGORIES } from '../src/game/types'
 
 describe('game data integrity', () => {
@@ -63,5 +63,26 @@ describe('drinks', () => {
     expect(combinerOutput('water', 'grapes')).toBe('grape-juice')
     expect(combinerOutput('water', 'carrot')).toBe('carrot-juice')
     expect(combinerOutput('water', 'strawberry')).toBe('smoothie')
+  })
+})
+
+describe('chicken / lemon / beehive chains', () => {
+  it('spawns egg, lemon and honey from their farm-track spawners', () => {
+    expect(CATALOG_BY_ID['chicken'].outputItem).toBe('egg')
+    expect(CATALOG_BY_ID['lemon-tree'].outputItem).toBe('lemon')
+    expect(CATALOG_BY_ID['beehive'].outputItem).toBe('honey')
+  })
+
+  it('cooks egg dishes, incl. cake from the cross-chain egg + honey', () => {
+    expect(combinerOutput('egg', 'wheat')).toBe('pancakes')
+    expect(combinerOutput('egg', 'cheese')).toBe('omelette')
+    expect(combinerOutput('egg', 'sugar')).toBe('custard')
+    expect(combinerOutput('honey', 'egg')).toBe('cake') // order-independent
+  })
+
+  it('turns lemon and honey into their drinks/preserves', () => {
+    expect(combinerOutput('water', 'lemon')).toBe('lemon-juice')
+    expect(combinerOutput('lemon', 'sugar')).toBe('marmalade')
+    expect(combinerOutput('water', 'honey')).toBe('mead')
   })
 })

@@ -60,6 +60,17 @@
   {"id": "bow", "name": "Bow", "emoji": "🏹", "category": "weapon", "startingValue": 18},
   {"id": "bed", "name": "Bed", "emoji": "🛏️", "category": "misc", "startingValue": 12},
 
+  {"id": "egg", "name": "Egg", "emoji": "🥚", "category": "food", "startingValue": 3},
+  {"id": "lemon", "name": "Lemon", "emoji": "🍋", "category": "food", "startingValue": 3},
+  {"id": "honey", "name": "Honey", "emoji": "🍯", "category": "food", "startingValue": 7},
+  {"id": "pancakes", "name": "Pancakes", "emoji": "🥞", "category": "food", "startingValue": 12},
+  {"id": "omelette", "name": "Omelette", "emoji": "🍳", "category": "food", "startingValue": 13},
+  {"id": "custard", "name": "Custard", "emoji": "🍮", "category": "food", "startingValue": 11},
+  {"id": "lemon-juice", "name": "Lemon Juice", "emoji": "🧃", "category": "drink", "startingValue": 7},
+  {"id": "marmalade", "name": "Marmalade", "emoji": "🫙", "category": "food", "startingValue": 16},
+  {"id": "mead", "name": "Mead", "emoji": "🍶", "category": "drink", "startingValue": 10},
+  {"id": "cake", "name": "Cake", "emoji": "🎂", "category": "food", "startingValue": 24},
+
   {"id": "villager", "name": "Villager", "emoji": "🧑", "category": "villager", "startingValue": 30},
   {"id": "merchant", "name": "Merchant", "emoji": "🧑‍💼", "category": "villager", "startingValue": 60},
   {"id": "guard", "name": "Guard", "emoji": "💂", "category": "villager", "startingValue": 60},
