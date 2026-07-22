@@ -46,6 +46,8 @@ export interface GameState {
   splitterCursors: Map<string, number>
   /** Lane contents for crossover cells: cell key `x,y` → {v, h} lanes. */
   crossovers: Map<string, CrossoverState>
+  /** In-transit teleporter items: channel label → FIFO queue of item ids. */
+  transit: Map<string, string[]>
   /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
   money: number
   /** Stock-market state: prices, last-10 histories, and last update time. */
@@ -71,6 +73,8 @@ export interface GameState {
   tapCell: (cx: number, cy: number) => void
   place: (cx: number, cy: number, catalogId: string) => void
   rotate: (cx: number, cy: number) => void
+  /** Set a teleporter pad's channel label (links send/receive pads by text). */
+  setChannel: (cx: number, cy: number, channel: string) => void
   remove: (cx: number, cy: number) => void
   select: (cx: number, cy: number) => void
   /** Sell a storage's full stockpile at the current price, banking the money. */
@@ -214,6 +218,7 @@ export const useGameStore = create<GameState>((set, get) => {
       townModifiers: computeTownModifiers(nextTownHalls),
       splitterCursors: new Map(),
       crossovers: new Map(),
+      transit: new Map(),
       money: save.money,
       market: save.market ? fillHistory(save.market) : seedMarket(Date.now()),
       savedAt: save.savedAt,
@@ -235,6 +240,7 @@ export const useGameStore = create<GameState>((set, get) => {
     townModifiers: computeTownModifiers(townHalls),
     splitterCursors: new Map(),
     crossovers: new Map(),
+    transit: new Map(),
     money,
     market,
     online: true,
@@ -295,6 +301,13 @@ export const useGameStore = create<GameState>((set, get) => {
       if (!machine) return
       machine.dir = nextDir(machine.dir)
       bump()
+    },
+
+    setChannel: (cx, cy, channel) => {
+      const machine = get().world.get(cellKey(cx, cy))
+      if (!machine || machine.kind !== 'teleporter') return
+      machine.channel = channel
+      bump() // persists via autosave; re-renders panels/labels
     },
 
     remove: (cx, cy) => {
@@ -369,6 +382,7 @@ export const useGameStore = create<GameState>((set, get) => {
         buffers: new Map(),
         splitterCursors: new Map(),
         crossovers: new Map(),
+        transit: new Map(),
         savedAt: now,
         lastAway: worthShowing ? result.summary : get().lastAway,
       })
@@ -378,7 +392,7 @@ export const useGameStore = create<GameState>((set, get) => {
     dismissAway: () => set({ lastAway: null }),
 
     advanceTick: () => {
-      const { world: w, items, buffers, stores, townHalls, splitterCursors, crossovers, money, market, online, tick, townModifiers } = get()
+      const { world: w, items, buffers, stores, townHalls, splitterCursors, crossovers, transit, money, market, online, tick, townModifiers } = get()
       // Merchants (and the tiny per-villager base) raise every live sale price;
       // scaling the price snapshot applies it without touching the seller code.
       const sellMult = townModifiers.sellMultiplier
@@ -393,6 +407,7 @@ export const useGameStore = create<GameState>((set, get) => {
         sellerBuffers: EMPTY_SELLER_BUFFERS, // live play sells online; never buffers
         splitterCursors,
         crossovers,
+        transit,
         money,
         prices,
         online,
@@ -410,6 +425,7 @@ export const useGameStore = create<GameState>((set, get) => {
           : null),
         splitterCursors: nextSim.splitterCursors ?? new Map(),
         crossovers: nextSim.crossovers ?? new Map(),
+        transit: nextSim.transit ?? new Map(),
         money: nextSim.money,
         tick: nextSim.tick,
       })
@@ -455,6 +471,7 @@ export const useGameStore = create<GameState>((set, get) => {
         crossovers: new Map(),
         money: config.startingMoney,
         market: seedMarket(now),
+        transit: new Map(),
         online: true,
         lastAway: null,
         tick: 0,

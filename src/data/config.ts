@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 12,
+  saveVersion: 14,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,
@@ -31,6 +31,14 @@ export const config = {
 
   /** Item id produced as the fallback "junk" output (M4). */
   junkItemId: 'junk',
+
+  /**
+   * Teleporter transit-queue capacity per channel. Send pads back-pressure (like
+   * any full sink) once their channel holds this many in-transit items, so an
+   * output that can't keep up — or a channel with no output pad at all — jams the
+   * inputs instead of dropping items. See the teleporter block in `tick.ts`.
+   */
+  teleporterQueueCapacity: 32,
 
   /**
    * Village Hut recipe (villager production). The hut consumes one item matching

@@ -47,6 +47,14 @@
 
     { "a": "water", "b": "wheat", "out": "dough" },
 
+    { "a": "egg", "b": "wheat", "out": "pancakes" },
+    { "a": "egg", "b": "cheese", "out": "omelette" },
+    { "a": "egg", "b": "sugar", "out": "custard" },
+    { "a": "egg", "b": "honey", "out": "cake" },
+    { "a": "water", "b": "lemon", "out": "lemon-juice" },
+    { "a": "lemon", "b": "sugar", "out": "marmalade" },
+    { "a": "water", "b": "honey", "out": "mead" },
+
     { "a": "water", "b": "sugar", "out": "lemonade" },
     { "a": "water", "b": "apple", "out": "apple-juice" },
     { "a": "water", "b": "grapes", "out": "grape-juice" },

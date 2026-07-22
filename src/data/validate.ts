@@ -70,6 +70,9 @@ export function validateData(): string[] {
     if (entry.kind === 'storage' && (!entry.capacity || entry.capacity <= 0)) {
       errors.push(`storage "${entry.id}" needs a positive capacity`)
     }
+    if (entry.kind === 'teleporter' && entry.role !== 'send' && entry.role !== 'receive') {
+      errors.push(`teleporter "${entry.id}" needs role "send" or "receive" (got ${entry.role})`)
+    }
     if (entry.costGrowth !== undefined && entry.costGrowth < 1) {
       errors.push(`catalog "${entry.id}" costGrowth must be >= 1 (got ${entry.costGrowth})`)
     }

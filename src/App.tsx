@@ -5,6 +5,7 @@ import { ActionTools } from './components/ActionTools'
 import { Palette } from './components/Palette'
 import { StoragePanel } from './components/StoragePanel'
 import { TownHallPanel } from './components/TownHallPanel'
+import { TeleporterPanel } from './components/TeleporterPanel'
 import { MarketPanel } from './components/MarketPanel'
 import { RecipeBook } from './components/RecipeBook'
 import { SaveMenu } from './components/SaveMenu'
@@ -105,6 +106,7 @@ export default function App() {
         <ActionTools />
         <StoragePanel />
         <TownHallPanel />
+        <TeleporterPanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
         {recipeOpen && <RecipeBook onClose={() => setRecipeOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}

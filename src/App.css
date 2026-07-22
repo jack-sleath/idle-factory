@@ -333,6 +333,38 @@
   color: #6ee7a8;
 }
 
+/* Teleporter inspector: channel text field + live network stats. */
+.panel__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font: inherit;
+}
+
+.panel__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.panel__hint {
+  margin: 0;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.teleporter__stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* Market panel sits top-left so it never collides with the storage inspector. */
 .panel--market {
   left: 12px;

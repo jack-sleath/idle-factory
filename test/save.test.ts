@@ -55,6 +55,16 @@ describe('save schema', () => {
     expect(parsed.market).toBeNull()
   })
 
+  it('round-trips a teleporter pad channel label', () => {
+    const tp: Machine[] = [
+      { id: 't', kind: 'teleporter', catalogId: 'teleporter-in', x: 4, y: 2, dir: 'E', channel: 'coal' },
+    ]
+    const parsed = parseSave(JSON.stringify(makeSave(camera, tp, 1)))!
+    expect(parsed.machines[0].channel).toBe('coal')
+    // A current-version save with a teleporter survives migration unchanged.
+    expect(migrateSave(parsed).machines[0].channel).toBe('coal')
+  })
+
   it('parseSave rejects malformed input', () => {
     expect(parseSave('not json')).toBeNull()
     expect(parseSave('42')).toBeNull()
