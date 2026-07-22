@@ -172,8 +172,9 @@ or junk). Items are defined once in `src/data/items.json`:
 
 Field meaning (see `ItemDef` in `src/game/types.ts`):
 - `id` — unique string key; referenced by catalog `outputItem` and by recipes.
-- `name` / `emoji` — display only. The emoji is the sprite (rasterized
-  automatically by `src/render/sprites.ts`; nothing else to register).
+- `name` / `emoji` — display only. The emoji is the sprite (rasterized by
+  `src/render/sprites.ts`). **If the emoji is new to the repo you must vendor
+  its icon** — see "Emoji icons" below; nothing else to register.
 - `category` — one of `ITEM_CATEGORIES` (`food`, `drink`, `valuable`,
   `weapon`, `material`, `misc`); groups items in the market/shop UI.
   `validateData()` rejects an unknown value. Rule of thumb: `material` is
@@ -195,9 +196,14 @@ What happens automatically once an item exists:
   new item gets a live price and sparkline for free.
 - **Selling / pricing**: `basePrice()` and the market read through
   `ITEMS_BY_ID`, so sellers and storage Sell-All price it correctly.
-- **Rendering**: any belt/storage/buffer holding the item draws its emoji.
+- **Rendering**: any belt/storage/buffer holding the item draws its emoji —
+  *provided its icon is vendored* (see "Emoji icons" below).
 
 Gotchas:
+- **A brand-new emoji renders as nothing until its icon is vendored.** The app
+  draws committed Twemoji SVGs from `public/twemoji/`, not live system emoji, so
+  after adding an item (or machine) whose emoji is new to the repo, run
+  `node scripts/vendor-twemoji.mjs`. See "Emoji icons" below.
 - An item that isn't produced by any spawner/recipe will just never appear —
   define its source (a spawner in `catalog.json` or a recipe in `recipes.json`)
   too.
@@ -245,7 +251,8 @@ Fields:
   `catalogId`, and it identifies spawner variants at runtime.
 - `kind` — one of the existing `MachineKind`s: `spawner`, `belt`, `processor`,
   `combiner`, `storage`, `seller`, `splitter`.
-- `name` / `emoji` — palette label + sprite.
+- `name` / `emoji` — palette label + sprite. A new emoji needs its icon
+  vendored (see "Emoji icons" below).
 - `cost` — money to build the first paid copy. `freeIfNonePlaced: true` makes
   the *first* copy free while none are placed (used for the starter basics; see
   `src/game/economy.ts`).
@@ -331,6 +338,39 @@ Gotchas:
   expected — just place two processors in series.
 - No quantity/ratio support: recipes are strictly 1→1 and 2→1, one item per
   slot per transform.
+
+---
+
+## Emoji icons (run this after adding any new emoji)
+
+The app does **not** render live system emoji. It draws committed **Twemoji
+14.0.2 SVGs** from `public/twemoji/` (rasterized in `src/render/sprites.ts`,
+resolved to a filename by `src/lib/twemoji.ts`), and the service worker
+precaches those files for offline use. An emoji with no matching
+`<codepoint>.svg` in `public/twemoji/` renders as **nothing** — this is the
+most common way a "finished" content change ships looking broken.
+
+**So whenever you add or change an emoji** — a new item in `items.json`, a new
+machine in `catalog.json`, or new UI chrome — re-vendor the icons:
+
+```
+node scripts/vendor-twemoji.mjs
+```
+
+The script derives the full emoji set from `items.json` + `catalog.json` + the
+hardcoded `UI_CHROME` list, fetches each SVG from the pinned CDN, and writes
+`public/twemoji/<codepoint>.svg`. It is idempotent (existing files are just
+overwritten identically) and **exits non-zero if any emoji can't be fetched**,
+so watch its output. **Commit the new SVGs** — they're what the app and the
+offline cache actually load; the script is a build-time convenience, not a
+runtime fetch.
+
+Gotchas:
+- If you add UI-only emoji (HUD/panel buttons, market category icons) that
+  aren't in the data files, add them to `UI_CHROME` in
+  `scripts/vendor-twemoji.mjs` or they won't be vendored.
+- A missing icon is silent — nothing fails to build or test. The only signal is
+  a blank sprite in-game, so re-running the script is the habit that prevents it.
 
 ---
 
