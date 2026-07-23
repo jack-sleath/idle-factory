@@ -365,6 +365,151 @@
   gap: 6px;
 }
 
+/* Bounty board sits top-left (like the market) so it clears the right-hand
+   inspectors; it scrolls when the completed log grows. */
+.panel--bounties {
+  left: 12px;
+  right: auto;
+  width: min(320px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+}
+
+.bounty__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bounty {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bounty__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bounty__name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bounty__reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.bounty__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.bounty__goal {
+  opacity: 0.72;
+}
+
+.bounty__timer {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.bounty__timer.is-urgent {
+  color: #ff6b6b;
+  opacity: 1;
+}
+
+.bounty__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.bounty__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.bounty__fill.is-done {
+  background: #6ee7a8;
+}
+
+.bounty__progress {
+  font-size: 11px;
+  text-align: right;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.bounty__log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.bounty__log-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.bounty__log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bounty__log-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.bounty__log-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.bounty__log-reward {
+  color: #6ee7a8;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Market panel sits top-left so it never collides with the storage inspector. */
 .panel--market {
   left: 12px;

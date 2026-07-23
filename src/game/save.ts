@@ -1,6 +1,7 @@
 import type { Camera } from '../render/camera'
 import type { Machine } from './types'
 import type { Market } from './market'
+import type { ActiveBounty, CompletedBounty } from './bounties'
 import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 import { cellKey } from './world'
@@ -39,6 +40,12 @@ export interface GameSave {
   townHalls: StoredTownHall[]
   /** Persisted market; null for pre-M7 saves (a fresh market is seeded then). */
   market: Market | null
+  /** Live bounty board; empty for saves predating it (the store reseeds then). */
+  bounties: ActiveBounty[]
+  /** Recent completed bounties, most-recent first (capped for display). */
+  completedBounties: CompletedBounty[]
+  /** Lifetime count of completed bounties (survives the capped log above). */
+  bountiesCompletedTotal: number
 }
 
 export function makeSave(
@@ -49,8 +56,23 @@ export function makeSave(
   stores: StoredStorage[] = [],
   market: Market | null = null,
   townHalls: StoredTownHall[] = [],
+  bounties: ActiveBounty[] = [],
+  completedBounties: CompletedBounty[] = [],
+  bountiesCompletedTotal = 0,
 ): GameSave {
-  return { version: config.saveVersion, savedAt, camera, machines, money, stores, townHalls, market }
+  return {
+    version: config.saveVersion,
+    savedAt,
+    camera,
+    machines,
+    money,
+    stores,
+    townHalls,
+    market,
+    bounties,
+    completedBounties,
+    bountiesCompletedTotal,
+  }
 }
 
 /** Loose runtime check that a parsed value looks like a Market. */
@@ -83,6 +105,9 @@ export function parseSave(raw: string): GameSave | null {
     stores: Array.isArray(obj.stores) ? (obj.stores as StoredStorage[]) : [],
     townHalls: Array.isArray(obj.townHalls) ? (obj.townHalls as StoredTownHall[]) : [],
     market: isMarket(obj.market) ? obj.market : null,
+    bounties: Array.isArray(obj.bounties) ? (obj.bounties as ActiveBounty[]) : [],
+    completedBounties: Array.isArray(obj.completedBounties) ? (obj.completedBounties as CompletedBounty[]) : [],
+    bountiesCompletedTotal: typeof obj.bountiesCompletedTotal === 'number' ? obj.bountiesCompletedTotal : 0,
   }
 }
 
@@ -119,7 +144,15 @@ export function migrateSave(save: GameSave): GameSave {
       for (const [id, n] of Object.entries(h.counts)) if (ITEMS_BY_ID[id]) counts[id] = n
       return { key: h.key, counts }
     })
-  return { ...save, version: config.saveVersion, machines, stores, townHalls, market: null }
+  // Drop active bounties whose referenced catalog/villager id no longer exists;
+  // the store tops the board back up to full on load. The completed log is pure
+  // history, so it (and the lifetime total) carry over untouched.
+  const bounties = (save.bounties ?? []).filter(
+    (b) =>
+      (b.objective !== 'place' || (!!b.catalogId && CATALOG_BY_ID[b.catalogId] !== undefined)) &&
+      (b.objective !== 'bank' || b.itemId === undefined || ITEMS_BY_ID[b.itemId] !== undefined),
+  )
+  return { ...save, version: config.saveVersion, machines, stores, townHalls, market: null, bounties }
 }
 
 export function loadSave(): GameSave | null {

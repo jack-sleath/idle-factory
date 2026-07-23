@@ -17,7 +17,15 @@ import { loadSave, makeSave, migrateSave, parseSave, writeSave, type GameSave } 
 import { step, type CrossoverState, type MachineBuffer, type StorageState, type TownHallState } from '../game/tick'
 import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 import { computeOffline, type AwaySummary } from '../game/offline'
-import { computeTownModifiers, type TownModifiers } from '../game/town'
+import { computeTownModifiers, sumVillagers, type TownModifiers } from '../game/town'
+import {
+  creditBounties,
+  seedBounties,
+  settleBounties,
+  refillBounties,
+  type ActiveBounty,
+  type CompletedBounty,
+} from '../game/bounties'
 
 /** The active palette tool; the selected tool governs what tapping a cell does. */
 export type Tool =
@@ -50,6 +58,12 @@ export interface GameState {
   transit: Map<string, string[]>
   /** Bank balance (auto-sellers credit it; Sell-All banks a storage). */
   money: number
+  /** Live bounty board (timed objectives that pay a one-time coin bounty). */
+  bounties: ActiveBounty[]
+  /** Recently completed bounties, most-recent first (capped for display). */
+  completedBounties: CompletedBounty[]
+  /** Lifetime count of completed bounties (survives the capped log above). */
+  bountiesCompletedTotal: number
   /** Stock-market state: prices, last-10 histories, and last update time. */
   market: Market
   /** Whether live selling is active (false only during offline sampling). */
@@ -138,6 +152,9 @@ interface InitState {
   stores: Map<string, StorageState>
   townHalls: Map<string, TownHallState>
   market: Market
+  bounties: ActiveBounty[]
+  completedBounties: CompletedBounty[]
+  bountiesCompletedTotal: number
 }
 
 function initState(): InitState {
@@ -161,6 +178,12 @@ function initState(): InitState {
       stores,
       townHalls,
       market,
+      // Top the saved board back up to full (covers older saves with none, and
+      // migrations that dropped a now-invalid bounty). Time-based expiry of
+      // stale deadlines is settled once the game starts / offline catch-up runs.
+      bounties: refillBounties(saved.bounties ?? [], now),
+      completedBounties: saved.completedBounties ?? [],
+      bountiesCompletedTotal: saved.bountiesCompletedTotal ?? 0,
     }
   }
   const world = worldFromMachines(seedStarterKit())
@@ -173,6 +196,9 @@ function initState(): InitState {
     stores: new Map(),
     townHalls: new Map(),
     market: seedMarket(now),
+    bounties: seedBounties(now),
+    completedBounties: [],
+    bountiesCompletedTotal: 0,
   }
 }
 
@@ -221,13 +247,40 @@ export const useGameStore = create<GameState>((set, get) => {
       transit: new Map(),
       money: save.money,
       market: save.market ? fillHistory(save.market) : seedMarket(Date.now()),
+      bounties: refillBounties(save.bounties ?? [], Date.now()),
+      completedBounties: save.completedBounties ?? [],
+      bountiesCompletedTotal: save.bountiesCompletedTotal ?? 0,
       savedAt: save.savedAt,
       selected: null,
       worldRev: get().worldRev + 1,
     })
   }
 
-  const { camera, world, chunks, savedAt, money, stores, townHalls, market } = initState()
+  // Settle the bounty board (pay/complete, expire, refill), banking any reward
+  // and appending to the completed log. Progress is credited by callers before
+  // this runs (via `creditBounties`); this only reacts to the results and to
+  // wall-clock deadlines. A no-op settle that leaves the board reference
+  // unchanged writes nothing, so calling it every tick is cheap.
+  const commitBounties = (board: ActiveBounty[]) => {
+    const now = Date.now()
+    const { board: settled, completed, reward } = settleBounties(board, now)
+    const cur = get()
+    if (settled === cur.bounties && completed.length === 0) return
+    if (completed.length === 0) {
+      set({ bounties: settled })
+    } else {
+      set({
+        bounties: settled,
+        money: cur.money + reward,
+        bountiesCompletedTotal: cur.bountiesCompletedTotal + completed.length,
+        completedBounties: [...completed, ...cur.completedBounties].slice(0, config.bounties.completedLogCap),
+      })
+    }
+    scheduleAutosave()
+  }
+
+  const { camera, world, chunks, savedAt, money, stores, townHalls, market, bounties, completedBounties, bountiesCompletedTotal } =
+    initState()
 
   return {
     camera,
@@ -242,6 +295,9 @@ export const useGameStore = create<GameState>((set, get) => {
     crossovers: new Map(),
     transit: new Map(),
     money,
+    bounties,
+    completedBounties,
+    bountiesCompletedTotal,
     market,
     online: true,
     lastAway: null,
@@ -294,6 +350,8 @@ export const useGameStore = create<GameState>((set, get) => {
       chunkAdd(c, cx, cy, config.chunkSize)
       if (cost > 0) set({ money: money - cost })
       bump()
+      // Building counts toward any live `place` bounty for this catalog id.
+      commitBounties(creditBounties(get().bounties, 'place', 1, catalogId))
     },
 
     rotate: (cx, cy) => {
@@ -350,6 +408,8 @@ export const useGameStore = create<GameState>((set, get) => {
       nextStores.delete(key)
       set({ stores: nextStores, money: money + proceeds })
       scheduleAutosave()
+      // Sell-All proceeds count toward any live `earn` bounty.
+      commitBounties(creditBounties(get().bounties, 'earn', proceeds))
     },
 
     advanceMarket: () => {
@@ -386,6 +446,9 @@ export const useGameStore = create<GameState>((set, get) => {
         savedAt: now,
         lastAway: worthShowing ? result.summary : get().lastAway,
       })
+      // Bounty deadlines burn in real time while away, but progress does not
+      // accrue offline — so expire any that lapsed and refill, crediting nothing.
+      commitBounties(get().bounties)
       get().saveNow()
     },
 
@@ -430,20 +493,41 @@ export const useGameStore = create<GameState>((set, get) => {
         tick: nextSim.tick,
       })
       if (banked) scheduleAutosave()
+      // Credit bounty progress for what happened this tick, then settle. During a
+      // tick money only ever rises (sellers credit; nothing spends), so the delta
+      // is this tick's gross sales — it feeds `earn` bounties. Bounty rewards are
+      // banked by commitBounties, not here, so they never count as "earned".
+      let board = get().bounties
+      const earned = nextSim.money - money
+      if (earned > 0) board = creditBounties(board, 'earn', earned)
+      if (banked) {
+        const before = sumVillagers(townHalls)
+        const after = sumVillagers(nextSim.townHalls)
+        for (const [id, n] of Object.entries(after)) {
+          const delta = n - (before[id] ?? 0)
+          if (delta > 0) board = creditBounties(board, 'bank', delta, id)
+        }
+      }
+      // Settle every tick (even with no progress) so real-time deadlines expire.
+      commitBounties(board)
     },
 
     saveNow: () => {
-      const { camera: cam, world: w, money, stores, townHalls, market } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot } = get()
       const savedAtNow = Date.now()
       set({ savedAt: savedAtNow })
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
-      writeSave(makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls)))
+      writeSave(
+        makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot),
+      )
     },
 
     exportSaveString: () => {
-      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot } = get()
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
-      const save = makeSave(cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls))
+      const save = makeSave(
+        cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot,
+      )
       return JSON.stringify(save, null, 2)
     },
 
@@ -471,6 +555,9 @@ export const useGameStore = create<GameState>((set, get) => {
         crossovers: new Map(),
         money: config.startingMoney,
         market: seedMarket(now),
+        bounties: seedBounties(now),
+        completedBounties: [],
+        bountiesCompletedTotal: 0,
         transit: new Map(),
         online: true,
         lastAway: null,
