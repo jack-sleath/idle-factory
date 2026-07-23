@@ -55,7 +55,7 @@
     { "a": "lemon", "b": "sugar", "out": "marmalade" },
     { "a": "water", "b": "honey", "out": "mead" },
 
-    { "a": "water", "b": "sugar", "out": "lemonade" },
+    { "a": "lemon-juice", "b": "sugar", "out": "lemonade" },
     { "a": "water", "b": "apple", "out": "apple-juice" },
     { "a": "water", "b": "grapes", "out": "grape-juice" },
     { "a": "water", "b": "carrot", "out": "carrot-juice" },
