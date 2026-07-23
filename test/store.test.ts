@@ -5,6 +5,7 @@ import { seedMarket } from '../src/game/market'
 import { cellKey } from '../src/game/world'
 import { config } from '../src/data/config'
 import { CATALOG_BY_ID } from '../src/data'
+import { effectiveCost } from '../src/game/economy'
 import { IDENTITY_TOWN_MODIFIERS } from '../src/game/town'
 
 function resetToEmptyWorld() {
@@ -246,6 +247,33 @@ describe('economy: buying = placing (M6)', () => {
     const w = useGameStore.getState().world
     expect(w.has(cellKey(0, 0)) && w.has(cellKey(1, 0)) && w.has(cellKey(2, 0))).toBe(true)
     expect(useGameStore.getState().money).toBe(0) // rebuilt for free
+  })
+
+  it('deleting a copy lowers the ramped cost of the next one, and delete gives no refund', () => {
+    const store = useGameStore.getState()
+    const cow = CATALOG_BY_ID['cow'] // costGrowth 1.15 → each copy pricier than the last
+    // Fund generously so affordability never blocks a placement.
+    useGameStore.setState({ money: 1_000_000 })
+
+    // Buy three cows; the cost ramps as base × growth ^ (already placed).
+    store.place(0, 0, 'cow') // placed 0 → base cost
+    store.place(1, 0, 'cow') // placed 1 → base × 1.15
+    store.place(2, 0, 'cow') // placed 2 → base × 1.15^2
+    const spentOnThree = effectiveCost(cow, 0) + effectiveCost(cow, 1) + effectiveCost(cow, 2)
+    expect(useGameStore.getState().money).toBe(1_000_000 - spentOnThree)
+
+    // Delete one cow (three placed → two). No coins are refunded.
+    const beforeDelete = useGameStore.getState().money
+    store.remove(2, 0)
+    expect(useGameStore.getState().world.has(cellKey(2, 0))).toBe(false)
+    expect(useGameStore.getState().money).toBe(beforeDelete) // delete never refunds
+
+    // The next cow is now priced off the lower placed-count (2), not 3 — the
+    // ramp tracks what is *currently* in the world, so deleting cheapens it.
+    const priceAfterDelete = effectiveCost(cow, 2)
+    expect(priceAfterDelete).toBeLessThan(effectiveCost(cow, 3))
+    store.place(2, 0, 'cow')
+    expect(useGameStore.getState().money).toBe(beforeDelete - priceAfterDelete)
   })
 
   it('buying a spawner variant (cow) produces its own item (milk)', () => {
