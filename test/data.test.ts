@@ -57,8 +57,8 @@ describe('pie production chain', () => {
 })
 
 describe('drinks', () => {
-  it('combines water with a fruit/veg or sugar into the matching drink', () => {
-    expect(combinerOutput('water', 'sugar')).toBe('lemonade')
+  it('combines water with a fruit/veg into the matching drink', () => {
+    expect(combinerOutput('lemon-juice', 'sugar')).toBe('lemonade')
     expect(combinerOutput('water', 'apple')).toBe('apple-juice')
     expect(combinerOutput('water', 'grapes')).toBe('grape-juice')
     expect(combinerOutput('water', 'carrot')).toBe('carrot-juice')

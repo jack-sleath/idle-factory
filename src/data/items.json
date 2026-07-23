@@ -38,7 +38,7 @@
   {"id": "fries", "name": "Fries", "emoji": "🍟", "category": "food", "startingValue": 6},
   {"id": "sugar", "name": "Sugar", "emoji": "🍬", "category": "material", "startingValue": 5},
   {"id": "wine", "name": "Wine", "emoji": "🍷", "category": "drink", "startingValue": 10},
-  {"id": "lemonade", "name": "Lemonade", "emoji": "🥤", "category": "drink", "startingValue": 8},
+  {"id": "lemonade", "name": "Lemonade", "emoji": "🥤", "category": "drink", "startingValue": 15},
   {"id": "apple-juice", "name": "Apple Juice", "emoji": "🧃", "category": "drink", "startingValue": 7},
   {"id": "grape-juice", "name": "Grape Juice", "emoji": "🧃", "category": "drink", "startingValue": 7},
   {"id": "carrot-juice", "name": "Carrot Juice", "emoji": "🧃", "category": "drink", "startingValue": 6},
