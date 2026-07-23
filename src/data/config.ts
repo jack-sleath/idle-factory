@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 14,
+  saveVersion: 15,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,
@@ -106,6 +106,16 @@ export const config = {
 
   /** Cell span of a spatial chunk, used for viewport culling. */
   chunkSize: 16,
+
+  /**
+   * Bounty board: a rotating set of short, timed objectives that each pay a
+   * one-time coin bounty (see `src/game/bounties.ts`). `boardSize` bounties are
+   * live at once; a completed or expired one is immediately replaced so the
+   * board stays full. Rewards are deliberately a small garnish on factory income
+   * (never a permanent multiplier), so a recurring board can't distort the tuned
+   * income/cost race. `completedLogCap` bounds the persisted completed history.
+   */
+  bounties: { boardSize: 3, completedLogCap: 50 },
 }
 
 export type Config = typeof config

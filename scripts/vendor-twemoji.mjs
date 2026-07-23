@@ -47,17 +47,21 @@ const CDN_BASES = [
 const dataDir = path.join(process.cwd(), 'src', 'data')
 const items = JSON.parse(fs.readFileSync(path.join(dataDir, 'items.json'), 'utf8'))
 const catalog = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'))
+const bounties = JSON.parse(fs.readFileSync(path.join(dataDir, 'bounties.json'), 'utf8'))
 
 const UI_CHROME = [
   '🏭', '🔍', '🔄', '❌', '📈', '💾', '❓', '📖',
   // Market-panel category section icons (those not already in the data set).
   '🍽️', '⚔️', '🧱',
+  // Bounty board: HUD/header icon, timer, and completed-log check.
+  '📋', '⏳', '✅',
 ]
 
 const EMOJI = [
   ...new Set([
     ...items.map((i) => i.emoji),
     ...catalog.map((c) => c.emoji),
+    ...bounties.map((b) => b.emoji),
     ...UI_CHROME,
   ]),
 ]

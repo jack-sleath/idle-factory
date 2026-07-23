@@ -20,6 +20,11 @@ function resetToEmptyWorld() {
     townModifiers: IDENTITY_TOWN_MODIFIERS,
     money: 0,
     market: seedMarket(0, () => 0.5), // neutral seed → live prices at each item's base value
+    // An empty board neutralizes bounties for the pre-existing tests (the board
+    // logic never fires with no bounties); the bounty tests below set their own.
+    bounties: [],
+    completedBounties: [],
+    bountiesCompletedTotal: 0,
     online: true,
     lastAway: null,
     savedAt: 0,
@@ -118,6 +123,99 @@ describe('town hall (store wiring)', () => {
     useGameStore.getState().saveNow()
     const saved = loadSave()!
     expect(saved.townHalls).toEqual([{ key: cellKey(1, 0), counts: { guard: 1 } }])
+  })
+})
+
+describe('bounty board (store wiring)', () => {
+  beforeEach(resetToEmptyWorld)
+
+  const bounty = (over: Partial<import('../src/game/bounties').ActiveBounty>) => ({
+    id: 'test-bounty',
+    templateId: 't',
+    objective: 'earn' as const,
+    title: 'Test Bounty',
+    emoji: '💰',
+    target: 100,
+    progress: 0,
+    reward: 500,
+    deadline: Date.now() + 60_000,
+    ...over,
+  })
+
+  it('credits an earn bounty from Sell-All proceeds and completes it', () => {
+    useGameStore.setState({ bounties: [bounty({ objective: 'earn', target: 50, reward: 500 })] })
+    const store = useGameStore.getState()
+    store.place(3, 0, 'storage-basic')
+    // 2 diamonds at base price 50 → 100 proceeds, clearing the target of 50.
+    useGameStore.setState({ stores: new Map([[cellKey(3, 0), { item: 'diamond', count: 2 }]]) })
+
+    store.sellAll(3, 0)
+    const s = useGameStore.getState()
+    expect(s.money).toBe(100 + 500) // sale proceeds + bounty reward
+    expect(s.bountiesCompletedTotal).toBe(1)
+    expect(s.completedBounties[0].reward).toBe(500)
+    // The completed bounty is gone and the board is refilled to full.
+    expect(s.bounties.some((b) => b.id === 'test-bounty')).toBe(false)
+    expect(s.bounties).toHaveLength(config.bounties.boardSize)
+  })
+
+  it('credits a sell bounty when an auto-seller sells the matching item', () => {
+    useGameStore.setState({
+      bounties: [bounty({ objective: 'sell', itemId: 'diamond', target: 1, reward: 250 })],
+      money: 100, // afford the seller (50)
+    })
+    const store = useGameStore.getState()
+    store.place(0, 0, 'belt-basic')
+    store.place(1, 0, 'seller-basic')
+    // A diamond on the belt is sold by the seller this tick (online).
+    useGameStore.setState({ items: new Map([[cellKey(0, 0), 'diamond']]) })
+    useGameStore.getState().advanceTick()
+
+    const s = useGameStore.getState()
+    expect(s.bountiesCompletedTotal).toBe(1)
+    expect(s.completedBounties[0].reward).toBe(250)
+  })
+
+  it('credits a place bounty as matching machines are built', () => {
+    useGameStore.setState({
+      bounties: [bounty({ objective: 'place', catalogId: 'belt-basic', target: 2, reward: 300 })],
+      money: 10,
+    })
+    const store = useGameStore.getState()
+    store.place(0, 0, 'belt-basic') // first belt free → progress 1
+    expect(useGameStore.getState().bounties[0]?.id).toBe('test-bounty')
+    expect(useGameStore.getState().bounties[0]?.progress).toBe(1)
+
+    store.place(1, 0, 'belt-basic') // second belt (costs 5) → progress 2 → complete
+    const s = useGameStore.getState()
+    expect(s.bountiesCompletedTotal).toBe(1)
+    expect(s.money).toBe(10 - 5 + 300) // spent on belt, gained the reward
+  })
+
+  it('credits a bank bounty when its villager is delivered to a town hall', () => {
+    useGameStore.setState({
+      bounties: [bounty({ objective: 'bank', itemId: 'merchant', target: 1, reward: 400 })],
+      money: 100_000,
+    })
+    const store = useGameStore.getState()
+    store.place(0, 0, 'belt-basic')
+    store.place(1, 0, 'town-hall')
+    useGameStore.setState({ items: new Map([[cellKey(0, 0), 'merchant']]) })
+    useGameStore.getState().advanceTick()
+
+    const s = useGameStore.getState()
+    expect(s.bountiesCompletedTotal).toBe(1)
+    expect(s.completedBounties[0].reward).toBe(400)
+  })
+
+  it('persists the board across a save/load round-trip', () => {
+    const board = [bounty({ id: 'keep-me', objective: 'earn', target: 5000, progress: 1234 })]
+    useGameStore.setState({ bounties: board })
+    useGameStore.getState().saveNow()
+    const saved = loadSave()!
+    const kept = saved.bounties.find((b) => b.id === 'keep-me')
+    expect(kept).toBeDefined()
+    expect(kept!.progress).toBe(1234)
   })
 })
 

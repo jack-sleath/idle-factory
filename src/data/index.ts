@@ -1,13 +1,17 @@
 import type { CatalogEntry, ItemDef, Recipes } from '../game/types'
+import type { BountyTemplate } from '../game/bounties'
 import itemsRaw from './items.json'
 import catalogRaw from './catalog.json'
 import recipesRaw from './recipes.json'
+import bountiesRaw from './bounties.json'
 
 // Typed views over the JSON data files. The `as` assertions narrow the JSON's
 // widened `string` fields to our union types (Dir, MachineKind).
 export const ITEMS = itemsRaw as ItemDef[]
 export const CATALOG = catalogRaw as CatalogEntry[]
 export const RECIPES = recipesRaw as Recipes
+/** Bounty-board objective templates (the board draws live bounties from these). */
+export const BOUNTY_TEMPLATES = bountiesRaw as BountyTemplate[]
 
 export const ITEMS_BY_ID: Record<string, ItemDef> = Object.fromEntries(
   ITEMS.map((item) => [item.id, item]),

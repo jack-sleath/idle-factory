@@ -1,4 +1,4 @@
-import { CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
+import { BOUNTY_TEMPLATES, CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
 import { ITEM_CATEGORIES } from '../game/types'
 import { config } from './config'
 
@@ -26,6 +26,7 @@ export function validateData(): string[] {
   }
   dupes(ITEMS.map((i) => i.id), 'item')
   dupes(CATALOG.map((c) => c.id), 'catalog')
+  dupes(BOUNTY_TEMPLATES.map((b) => b.id), 'bounty')
 
   // Every item must carry a known category (used to group the market/shop UI).
   const categories = new Set<string>(ITEM_CATEGORIES)
@@ -86,6 +87,41 @@ export function validateData(): string[] {
     if (!known(r.a)) errors.push(`combiner recipe input "${r.a}" is not a defined item`)
     if (!known(r.b)) errors.push(`combiner recipe input "${r.b}" is not a defined item`)
     if (!known(r.out)) errors.push(`combiner recipe output "${r.out}" is not a defined item`)
+  }
+
+  // Bounty templates: the board draws live bounties from these, so a broken
+  // catalog/item reference would produce an un-completable bounty. Catch it here.
+  const catalogIds = new Set(CATALOG.map((c) => c.id))
+  const objectives = new Set(['earn', 'sell', 'place', 'bank'])
+  for (const b of BOUNTY_TEMPLATES) {
+    if (!objectives.has(b.objective)) {
+      errors.push(`bounty "${b.id}" has unknown objective "${b.objective}"`)
+    }
+    if (!b.title) errors.push(`bounty "${b.id}" has no title`)
+    if (!b.emoji) errors.push(`bounty "${b.id}" has no emoji`)
+    const [min, max] = b.targetRange ?? []
+    if (!(typeof min === 'number' && typeof max === 'number' && min > 0 && max >= min)) {
+      errors.push(`bounty "${b.id}" needs a targetRange [min, max] with 0 < min <= max`)
+    }
+    if (!(b.durationMinutes > 0)) errors.push(`bounty "${b.id}" needs a positive durationMinutes`)
+    if (!(b.rewardPerUnit >= 0)) errors.push(`bounty "${b.id}" needs a non-negative rewardPerUnit`)
+    if (b.objective === 'place') {
+      if (!b.catalogId || !catalogIds.has(b.catalogId)) {
+        errors.push(`bounty "${b.id}" (place) catalogId "${b.catalogId}" is not a defined catalog entry`)
+      }
+    }
+    if (b.objective === 'sell') {
+      if (!b.itemId || !known(b.itemId)) {
+        errors.push(`bounty "${b.id}" (sell) itemId "${b.itemId}" is not a defined item`)
+      }
+    }
+    if (b.objective === 'bank' && b.itemId !== undefined) {
+      if (!known(b.itemId)) {
+        errors.push(`bounty "${b.id}" (bank) itemId "${b.itemId}" is not a defined item`)
+      } else if (ITEMS_BY_ID[b.itemId].category !== 'villager') {
+        errors.push(`bounty "${b.id}" (bank) itemId "${b.itemId}" must be a villager item`)
+      }
+    }
   }
 
   // Cross-check the lookup index was built over the same item set (guards against

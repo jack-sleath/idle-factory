@@ -1,0 +1,109 @@
+[
+  {
+    "id": "earn-steady",
+    "objective": "earn",
+    "title": "Turn a Profit",
+    "emoji": "💰",
+    "targetRange": [10000, 40000],
+    "rewardPerUnit": 0.08,
+    "durationMinutes": 20
+  },
+  {
+    "id": "earn-big",
+    "objective": "earn",
+    "title": "Big Sale",
+    "emoji": "🤑",
+    "targetRange": [60000, 160000],
+    "rewardPerUnit": 0.06,
+    "durationMinutes": 45
+  },
+  {
+    "id": "sell-bread",
+    "objective": "sell",
+    "itemId": "bread",
+    "title": "Bakery Rush",
+    "emoji": "🍞",
+    "targetRange": [150, 400],
+    "rewardPerUnit": 4,
+    "durationMinutes": 25
+  },
+  {
+    "id": "sell-pizza",
+    "objective": "sell",
+    "itemId": "pizza",
+    "title": "Pizza Night",
+    "emoji": "🍕",
+    "targetRange": [60, 180],
+    "rewardPerUnit": 10,
+    "durationMinutes": 30
+  },
+  {
+    "id": "sell-swords",
+    "objective": "sell",
+    "itemId": "iron-sword",
+    "title": "Arm the Militia",
+    "emoji": "🗡️",
+    "targetRange": [80, 200],
+    "rewardPerUnit": 8,
+    "durationMinutes": 30
+  },
+  {
+    "id": "place-belts",
+    "objective": "place",
+    "catalogId": "belt-basic",
+    "title": "Lay More Track",
+    "emoji": "➡️",
+    "targetRange": [8, 20],
+    "rewardPerUnit": 80,
+    "durationMinutes": 15
+  },
+  {
+    "id": "place-sellers",
+    "objective": "place",
+    "catalogId": "seller-basic",
+    "title": "Staff the Stalls",
+    "emoji": "🧾",
+    "targetRange": [3, 6],
+    "rewardPerUnit": 500,
+    "durationMinutes": 20
+  },
+  {
+    "id": "place-processors",
+    "objective": "place",
+    "catalogId": "processor-basic",
+    "title": "Refine Production",
+    "emoji": "⚙️",
+    "targetRange": [3, 6],
+    "rewardPerUnit": 450,
+    "durationMinutes": 20
+  },
+  {
+    "id": "bank-any",
+    "objective": "bank",
+    "title": "Grow the Town",
+    "emoji": "🧑",
+    "targetRange": [5, 15],
+    "rewardPerUnit": 350,
+    "durationMinutes": 30
+  },
+  {
+    "id": "bank-merchants",
+    "objective": "bank",
+    "itemId": "merchant",
+    "title": "Hire Merchants",
+    "emoji": "🧑‍💼",
+    "targetRange": [3, 8],
+    "rewardPerUnit": 550,
+    "durationMinutes": 40
+  },
+  {
+    "id": "bank-guards",
+    "objective": "bank",
+    "itemId": "guard",
+    "title": "Post the Watch",
+    "emoji": "💂",
+    "targetRange": [3, 8],
+    "rewardPerUnit": 550,
+    "durationMinutes": 40
+  }
+]

@@ -7,6 +7,7 @@ import { StoragePanel } from './components/StoragePanel'
 import { TownHallPanel } from './components/TownHallPanel'
 import { TeleporterPanel } from './components/TeleporterPanel'
 import { MarketPanel } from './components/MarketPanel'
+import { BountyBoard } from './components/BountyBoard'
 import { RecipeBook } from './components/RecipeBook'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
@@ -53,6 +54,7 @@ export default function App() {
   useMarketLoop()
   const money = useGameStore((s) => s.money)
   const [marketOpen, setMarketOpen] = useState(false)
+  const [bountiesOpen, setBountiesOpen] = useState(false)
   const [recipeOpen, setRecipeOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
@@ -74,6 +76,16 @@ export default function App() {
             onClick={() => setMarketOpen((open) => !open)}
           >
             <Emoji emoji="📈" size={18} label="market" />
+          </button>
+          <button
+            type="button"
+            className={`hud__btn${bountiesOpen ? ' is-active' : ''}`}
+            aria-pressed={bountiesOpen}
+            aria-label="Bounties"
+            title="Bounties"
+            onClick={() => setBountiesOpen((open) => !open)}
+          >
+            <Emoji emoji="📋" size={18} label="bounties" />
           </button>
           <button
             type="button"
@@ -108,6 +120,7 @@ export default function App() {
         <TownHallPanel />
         <TeleporterPanel />
         {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
+        {bountiesOpen && <BountyBoard onClose={() => setBountiesOpen(false)} />}
         {recipeOpen && <RecipeBook onClose={() => setRecipeOpen(false)} />}
         {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
         <AwaySummary />
