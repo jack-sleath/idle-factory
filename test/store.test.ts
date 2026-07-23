@@ -159,6 +159,23 @@ describe('bounty board (store wiring)', () => {
     expect(s.bounties).toHaveLength(config.bounties.boardSize)
   })
 
+  it('credits a sell bounty when an auto-seller sells the matching item', () => {
+    useGameStore.setState({
+      bounties: [bounty({ objective: 'sell', itemId: 'diamond', target: 1, reward: 250 })],
+      money: 100, // afford the seller (50)
+    })
+    const store = useGameStore.getState()
+    store.place(0, 0, 'belt-basic')
+    store.place(1, 0, 'seller-basic')
+    // A diamond on the belt is sold by the seller this tick (online).
+    useGameStore.setState({ items: new Map([[cellKey(0, 0), 'diamond']]) })
+    useGameStore.getState().advanceTick()
+
+    const s = useGameStore.getState()
+    expect(s.bountiesCompletedTotal).toBe(1)
+    expect(s.completedBounties[0].reward).toBe(250)
+  })
+
   it('credits a place bounty as matching machines are built', () => {
     useGameStore.setState({
       bounties: [bounty({ objective: 'place', catalogId: 'belt-basic', target: 2, reward: 300 })],

@@ -150,6 +150,7 @@ export function migrateSave(save: GameSave): GameSave {
   const bounties = (save.bounties ?? []).filter(
     (b) =>
       (b.objective !== 'place' || (!!b.catalogId && CATALOG_BY_ID[b.catalogId] !== undefined)) &&
+      (b.objective !== 'sell' || (!!b.itemId && ITEMS_BY_ID[b.itemId] !== undefined)) &&
       (b.objective !== 'bank' || b.itemId === undefined || ITEMS_BY_ID[b.itemId] !== undefined),
   )
   return { ...save, version: config.saveVersion, machines, stores, townHalls, market: null, bounties }

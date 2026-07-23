@@ -21,6 +21,7 @@ import { config } from '../data/config'
 /** What a bounty measures. */
 export type BountyObjective =
   | 'earn' // total coins banked from sales (auto-sellers + Sell-All)
+  | 'sell' // units of a given item sold (auto-sellers + Sell-All)
   | 'place' // machines built of a given catalog id
   | 'bank' // villagers banked into town halls (a specific type, or any)
 
@@ -39,7 +40,10 @@ export interface BountyTemplate {
   durationMinutes: number
   /** `place` only: the catalog id whose placements count. */
   catalogId?: string
-  /** `bank` only: a specific villager item id, or omitted to count ANY villager. */
+  /**
+   * The item id this bounty is about: for `sell`, the item to sell; for `bank`,
+   * a specific villager (or omitted to count ANY villager). Unused by `earn`/`place`.
+   */
   itemId?: string
 }
 
@@ -138,7 +142,7 @@ export function seedBounties(now: number, rng: Rng = Math.random): ActiveBounty[
  * Add `amount` of progress to every active bounty matching (objective, key),
  * returning a NEW board if anything changed and the SAME reference otherwise (so
  * callers can cheaply skip a re-render when nothing moved). `key` is the catalog
- * id for `place` and the villager item id for `bank`; a `bank` bounty with no
+ * id for `place`, and the item id for `sell`/`bank`; a `bank` bounty with no
  * `itemId` counts every villager, so it matches any key.
  */
 export function creditBounties(
@@ -152,6 +156,7 @@ export function creditBounties(
   const next = board.map((b) => {
     if (b.objective !== objective) return b
     if (objective === 'place' && b.catalogId !== key) return b
+    if (objective === 'sell' && b.itemId !== key) return b
     if (objective === 'bank' && b.itemId !== undefined && b.itemId !== key) return b
     if (b.progress >= b.target) return b // already met; awaiting settlement
     changed = true

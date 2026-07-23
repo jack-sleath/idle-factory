@@ -101,6 +101,16 @@ describe('creditBounties', () => {
     expect(next[1].progress).toBe(0) // different catalog id untouched
   })
 
+  it('matches sell bounties by item id', () => {
+    const board = [
+      active({ objective: 'sell', itemId: 'bread', target: 10 }),
+      active({ objective: 'sell', itemId: 'pizza', target: 10 }),
+    ]
+    const next = creditBounties(board, 'sell', 3, 'bread')
+    expect(next[0].progress).toBe(3)
+    expect(next[1].progress).toBe(0) // different item untouched
+  })
+
   it('credits a typed bank bounty only for its villager, but an untyped one for any', () => {
     const board = [
       active({ objective: 'bank', itemId: 'merchant', target: 5 }),

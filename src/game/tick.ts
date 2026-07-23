@@ -96,6 +96,13 @@ export interface SimState {
   sellerBuffers: Map<string, Record<string, number>>
   /** Bank balance; auto-sellers credit it while online (M5). */
   money: number
+  /**
+   * Items sold by auto-sellers THIS tick, keyed by item id → count. Only written
+   * while `online` (offline sales buffer into `sellerBuffers` instead), and only
+   * consumed downstream by the bounty board's `sell` objectives — the sim itself
+   * doesn't read it back. Absent/empty on ticks with no live sale.
+   */
+  sold?: Map<string, number>
   /** Live sale price per item id (from the market, M7); base price if absent. */
   prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
@@ -628,6 +635,8 @@ export function step(state: SimState): SimState {
   const nextSellerBuffers = new Map<string, Record<string, number>>(sellerBuffers)
   const nextSplitterCursors = new Map<string, number>()
   const nextCrossovers = new Map<string, CrossoverState>()
+  // Per-item live sales this tick (for the bounty board's `sell` objectives).
+  const nextSold = new Map<string, number>()
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink (tx,ty):
@@ -769,6 +778,7 @@ export function step(state: SimState): SimState {
           if (online) {
             // Liquidate at the live market price (base price if the market has none).
             money += prices[incoming] ?? basePrice(incoming)
+            nextSold.set(incoming, (nextSold.get(incoming) ?? 0) + 1)
           } else {
             // Offline: buffer intake per item so catch-up can measure throughput.
             const prev = nextSellerBuffers.get(key) ?? {}
@@ -844,6 +854,7 @@ export function step(state: SimState): SimState {
     crossovers: nextCrossovers,
     transit: nextTransit,
     money,
+    sold: nextSold,
     prices,
     online,
     tick,

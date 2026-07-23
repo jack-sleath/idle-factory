@@ -18,6 +18,36 @@
     "durationMinutes": 45
   },
   {
+    "id": "sell-bread",
+    "objective": "sell",
+    "itemId": "bread",
+    "title": "Bakery Rush",
+    "emoji": "🍞",
+    "targetRange": [150, 400],
+    "rewardPerUnit": 4,
+    "durationMinutes": 25
+  },
+  {
+    "id": "sell-pizza",
+    "objective": "sell",
+    "itemId": "pizza",
+    "title": "Pizza Night",
+    "emoji": "🍕",
+    "targetRange": [60, 180],
+    "rewardPerUnit": 10,
+    "durationMinutes": 30
+  },
+  {
+    "id": "sell-swords",
+    "objective": "sell",
+    "itemId": "iron-sword",
+    "title": "Arm the Militia",
+    "emoji": "🗡️",
+    "targetRange": [80, 200],
+    "rewardPerUnit": 8,
+    "durationMinutes": 30
+  },
+  {
     "id": "place-belts",
     "objective": "place",
     "catalogId": "belt-basic",

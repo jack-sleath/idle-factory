@@ -458,6 +458,7 @@ describe('sellers (M5)', () => {
     const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { money: 100 }))
     expect(s.money).toBe(150)
     expect(s.items.size).toBe(0) // consumed by the seller
+    expect(s.sold?.get('diamond')).toBe(1) // recorded for `sell` bounties
   })
 
   it('buffers instead of selling while offline (no money, item consumed, M9)', () => {
@@ -466,6 +467,7 @@ describe('sellers (M5)', () => {
     expect(s.money).toBe(100) // no credit while offline
     expect(itemAt(s, 0, 0)).toBeUndefined() // consumed off the belt
     expect(s.sellerBuffers.get(cellKey(1, 0))).toEqual({ diamond: 1 }) // buffered for catch-up
+    expect(s.sold?.size ?? 0).toBe(0) // offline sales don't count toward `sell` bounties
   })
 
   it('credits money at the live market price when one is supplied (M7)', () => {

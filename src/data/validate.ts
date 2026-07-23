@@ -92,7 +92,7 @@ export function validateData(): string[] {
   // Bounty templates: the board draws live bounties from these, so a broken
   // catalog/item reference would produce an un-completable bounty. Catch it here.
   const catalogIds = new Set(CATALOG.map((c) => c.id))
-  const objectives = new Set(['earn', 'place', 'bank'])
+  const objectives = new Set(['earn', 'sell', 'place', 'bank'])
   for (const b of BOUNTY_TEMPLATES) {
     if (!objectives.has(b.objective)) {
       errors.push(`bounty "${b.id}" has unknown objective "${b.objective}"`)
@@ -108,6 +108,11 @@ export function validateData(): string[] {
     if (b.objective === 'place') {
       if (!b.catalogId || !catalogIds.has(b.catalogId)) {
         errors.push(`bounty "${b.id}" (place) catalogId "${b.catalogId}" is not a defined catalog entry`)
+      }
+    }
+    if (b.objective === 'sell') {
+      if (!b.itemId || !known(b.itemId)) {
+        errors.push(`bounty "${b.id}" (sell) itemId "${b.itemId}" is not a defined item`)
       }
     }
     if (b.objective === 'bank' && b.itemId !== undefined) {

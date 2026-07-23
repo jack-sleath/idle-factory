@@ -408,8 +408,10 @@ export const useGameStore = create<GameState>((set, get) => {
       nextStores.delete(key)
       set({ stores: nextStores, money: money + proceeds })
       scheduleAutosave()
-      // Sell-All proceeds count toward any live `earn` bounty.
-      commitBounties(creditBounties(get().bounties, 'earn', proceeds))
+      // Sell-All counts toward `earn` (proceeds) and `sell` (units of the item).
+      let board = creditBounties(get().bounties, 'earn', proceeds)
+      board = creditBounties(board, 'sell', store.count, store.item)
+      commitBounties(board)
     },
 
     advanceMarket: () => {
@@ -500,6 +502,9 @@ export const useGameStore = create<GameState>((set, get) => {
       let board = get().bounties
       const earned = nextSim.money - money
       if (earned > 0) board = creditBounties(board, 'earn', earned)
+      if (nextSim.sold) {
+        for (const [item, n] of nextSim.sold) board = creditBounties(board, 'sell', n, item)
+      }
       if (banked) {
         const before = sumVillagers(townHalls)
         const after = sumVillagers(nextSim.townHalls)

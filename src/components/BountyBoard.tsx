@@ -10,6 +10,8 @@ function goalLabel(b: ActiveBounty): string {
   switch (b.objective) {
     case 'earn':
       return 'Earn coins from sales'
+    case 'sell':
+      return `Sell ${ITEMS_BY_ID[b.itemId ?? '']?.name ?? 'goods'}`
     case 'place':
       return `Build ${CATALOG_BY_ID[b.catalogId ?? '']?.name ?? 'machines'}`
     case 'bank':
