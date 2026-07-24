@@ -54,18 +54,39 @@ export function GameCanvas() {
     let raf = 0
     let dpr = 1
 
+    // On-demand rendering: the scene only changes when the simulation ticks, the
+    // camera/selection moves, the canvas resizes, or a sprite finishes decoding.
+    // Between those events nothing animates (items snap per tick), so redrawing
+    // every rAF frame would just re-paint an identical scene ~30× per tick. We
+    // mark `dirty` on any of those triggers and otherwise let the loop idle —
+    // this keeps a large factory from pegging the CPU/GPU at 60fps.
+    let dirty = true
+    const markDirty = () => {
+      dirty = true
+    }
+    // Any store mutation (tick, camera pan/zoom, placement, selection) → redraw.
+    const unsubscribe = useGameStore.subscribe(markDirty)
+
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 3)
       const rect = canvas.getBoundingClientRect()
       sizeRef.current = { cssW: rect.width, cssH: rect.height }
       canvas.width = Math.max(1, Math.round(rect.width * dpr))
       canvas.height = Math.max(1, Math.round(rect.height * dpr))
+      markDirty()
     }
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
 
     const loop = () => {
+      // Skip the whole draw when nothing visible changed since the last frame.
+      if (!dirty) {
+        raf = requestAnimationFrame(loop)
+        return
+      }
+      dirty = false
+
       const { cssW, cssH } = sizeRef.current
       const { camera, world, chunks, items, buffers, stores, crossovers, selected } = useGameStore.getState()
 
@@ -131,6 +152,9 @@ export function GameCanvas() {
       }
 
       renderScene(ctx, camera, cssW, cssH, dpr, spritesRef.current, tiles, itemTiles, selected)
+      // Sprites decode asynchronously: if any drawn this frame wasn't ready yet,
+      // keep redrawing so it appears the moment its bitmap lands.
+      if (spritesRef.current.hasPending()) dirty = true
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -138,6 +162,7 @@ export function GameCanvas() {
     return () => {
       cancelAnimationFrame(raf)
       observer.disconnect()
+      unsubscribe()
     }
   }, [])
 
