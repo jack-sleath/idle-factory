@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Emoji } from './components/Emoji'
 import { GameCanvas } from './components/GameCanvas'
 import { ActionTools } from './components/ActionTools'
@@ -57,56 +57,81 @@ export default function App() {
   const [bountiesOpen, setBountiesOpen] = useState(false)
   const [recipeOpen, setRecipeOpen] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
+
+  // Close the HUD menu on an outside tap or Escape (only while it's open).
+  const menuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
+
+  // Each menu entry toggles its panel and closes the menu.
+  const menuItems: { label: string; emoji: string; open: boolean; toggle: () => void }[] = [
+    { label: 'Market', emoji: '📈', open: marketOpen, toggle: () => setMarketOpen((o) => !o) },
+    { label: 'Daily Challenges', emoji: '📋', open: bountiesOpen, toggle: () => setBountiesOpen((o) => !o) },
+    { label: 'Recipe Book', emoji: '📖', open: recipeOpen, toggle: () => setRecipeOpen((o) => !o) },
+    { label: 'Saves', emoji: '💾', open: saveOpen, toggle: () => setSaveOpen((o) => !o) },
+  ]
+  const anyPanelOpen = menuItems.some((m) => m.open)
 
   return (
     <div className="app">
       <header className="hud">
-        <span className="hud__title">
-          <Emoji emoji="🏭" size={22} label="factory" /> Auto-Exportica
-        </span>
-        <span className="hud__hint">Pick a tool, then tap a cell</span>
+        <div className="hud__brand">
+          <span className="hud__title">
+            <Emoji emoji="🏭" size={22} label="factory" /> Auto-Exportica
+          </span>
+          <span className="hud__hint">Pick a tool, then tap a cell</span>
+        </div>
         <div className="hud__right">
-          <button
-            type="button"
-            className={`hud__btn${marketOpen ? ' is-active' : ''}`}
-            aria-pressed={marketOpen}
-            aria-label="Market"
-            title="Market"
-            onClick={() => setMarketOpen((open) => !open)}
-          >
-            <Emoji emoji="📈" size={18} label="market" />
-          </button>
-          <button
-            type="button"
-            className={`hud__btn${bountiesOpen ? ' is-active' : ''}`}
-            aria-pressed={bountiesOpen}
-            aria-label="Daily challenges"
-            title="Daily Challenges"
-            onClick={() => setBountiesOpen((open) => !open)}
-          >
-            <Emoji emoji="📋" size={18} label="daily challenges" />
-          </button>
-          <button
-            type="button"
-            className={`hud__btn${recipeOpen ? ' is-active' : ''}`}
-            aria-pressed={recipeOpen}
-            aria-label="Recipe book"
-            title="Recipe book"
-            onClick={() => setRecipeOpen((open) => !open)}
-          >
-            <Emoji emoji="📖" size={18} label="recipe book" />
-          </button>
-          <button
-            type="button"
-            className={`hud__btn${saveOpen ? ' is-active' : ''}`}
-            aria-pressed={saveOpen}
-            aria-label="Saves"
-            title="Saves"
-            onClick={() => setSaveOpen((open) => !open)}
-          >
-            <Emoji emoji="💾" size={18} label="saves" />
-          </button>
+          <div className="hud__menu" ref={menuRef}>
+            <button
+              type="button"
+              className={`hud__btn${menuOpen || anyPanelOpen ? ' is-active' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Menu"
+              title="Menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <span className="hud__menu-icon" aria-hidden="true">
+                ☰
+              </span>
+            </button>
+            {menuOpen && (
+              <div className="hud__dropdown" role="menu">
+                {menuItems.map((m) => (
+                  <button
+                    key={m.label}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={m.open}
+                    className={`hud__dropdown-item${m.open ? ' is-active' : ''}`}
+                    onClick={() => {
+                      m.toggle()
+                      setMenuOpen(false)
+                    }}
+                  >
+                    <Emoji emoji={m.emoji} size={18} label="" />
+                    <span className="hud__dropdown-label">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="hud__money" title="Money">
             <Emoji emoji="💰" size={18} label="money" />
             <span className="hud__money-value">{formatMoney(money)}</span>
