@@ -18,6 +18,16 @@ interface Entry {
 
 export class SpriteCache {
   private cache = new Map<string, Entry>()
+  private pending = 0
+
+  /**
+   * Whether any requested sprite is still decoding. The on-demand render loop
+   * polls this so it keeps redrawing while async bitmaps stream in, then goes
+   * quiet once every visible sprite is ready.
+   */
+  hasPending(): boolean {
+    return this.pending > 0
+  }
 
   /**
    * Returns the cached bitmap for an emoji, or null if it is still loading or
@@ -32,6 +42,7 @@ export class SpriteCache {
 
     const entry: Entry = { status: 'loading' }
     this.cache.set(emoji, entry)
+    this.pending++
 
     const img = new Image()
     img.decoding = 'async'
@@ -48,9 +59,11 @@ export class SpriteCache {
       } else {
         entry.status = 'error'
       }
+      this.pending--
     }
     img.onerror = () => {
       entry.status = 'error'
+      this.pending--
     }
     img.src = twemojiUrl(emoji)
 

@@ -1,6 +1,7 @@
+import { useMemo } from 'react'
 import { useGameStore, type Tool } from '../store/gameStore'
 import { CATALOG } from '../data'
-import { countPlaced, effectiveCost } from '../game/economy'
+import { effectiveCost } from '../game/economy'
 import { formatMoney } from '../lib/format'
 import { Emoji } from './Emoji'
 
@@ -24,7 +25,18 @@ export function Palette() {
   const buildCostMultiplier = useGameStore((s) => s.townModifiers.buildCostMultiplier)
   // worldRev changes whenever the world is mutated in place, so prices/counts
   // recompute even though the `world` Map reference is stable.
-  useGameStore((s) => s.worldRev)
+  const worldRev = useGameStore((s) => s.worldRev)
+
+  // Tally placed copies per catalog id in a single pass over the world, instead
+  // of scanning it once per catalog entry on every render (this component
+  // re-renders every tick as `money` changes). Recomputed only on a structural
+  // world change, keyed by worldRev since the `world` Map reference is stable.
+  const placedCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const m of world.values()) counts.set(m.catalogId, (counts.get(m.catalogId) ?? 0) + 1)
+    return counts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [world, worldRev])
 
   return (
     <nav className="palette" aria-label="Build tools">
@@ -33,7 +45,7 @@ export function Palette() {
           const t: Tool = { kind: 'build', catalogId: entry.id }
           // The full list price, and what the player actually pays after the
           // town-hall mason build-cost discount (matches gameStore.place()).
-          const base = effectiveCost(entry, countPlaced(world, entry.id))
+          const base = effectiveCost(entry, placedCounts.get(entry.id) ?? 0)
           const cost = Math.round(base * buildCostMultiplier)
           const discounted = cost < base
           const affordable = money >= cost
