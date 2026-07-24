@@ -81,11 +81,11 @@ export default function App() {
             type="button"
             className={`hud__btn${bountiesOpen ? ' is-active' : ''}`}
             aria-pressed={bountiesOpen}
-            aria-label="Bounties"
-            title="Bounties"
+            aria-label="Daily challenges"
+            title="Daily Challenges"
             onClick={() => setBountiesOpen((open) => !open)}
           >
-            <Emoji emoji="📋" size={18} label="bounties" />
+            <Emoji emoji="📋" size={18} label="daily challenges" />
           </button>
           <button
             type="button"

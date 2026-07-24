@@ -20,9 +20,9 @@ import { computeOffline, type AwaySummary } from '../game/offline'
 import { computeTownModifiers, sumVillagers, type TownModifiers } from '../game/town'
 import {
   creditBounties,
-  seedBounties,
+  seedDailyBounties,
   settleBounties,
-  refillBounties,
+  ensureDailyBoard,
   type ActiveBounty,
   type CompletedBounty,
 } from '../game/bounties'
@@ -178,10 +178,10 @@ function initState(): InitState {
       stores,
       townHalls,
       market,
-      // Top the saved board back up to full (covers older saves with none, and
-      // migrations that dropped a now-invalid bounty). Time-based expiry of
-      // stale deadlines is settled once the game starts / offline catch-up runs.
-      bounties: refillBounties(saved.bounties ?? [], now),
+      // Normalise the saved board to today's challenges (covers older saves with
+      // none, a stale set from a previous day, or a challenge dropped by a
+      // migration). Day-rollover mid-session is handled by `settleBounties`.
+      bounties: ensureDailyBoard(saved.bounties ?? [], now),
       completedBounties: saved.completedBounties ?? [],
       bountiesCompletedTotal: saved.bountiesCompletedTotal ?? 0,
     }
@@ -196,7 +196,7 @@ function initState(): InitState {
     stores: new Map(),
     townHalls: new Map(),
     market: seedMarket(now),
-    bounties: seedBounties(now),
+    bounties: seedDailyBounties(now),
     completedBounties: [],
     bountiesCompletedTotal: 0,
   }
@@ -247,7 +247,7 @@ export const useGameStore = create<GameState>((set, get) => {
       transit: new Map(),
       money: save.money,
       market: save.market ? fillHistory(save.market) : seedMarket(Date.now()),
-      bounties: refillBounties(save.bounties ?? [], Date.now()),
+      bounties: ensureDailyBoard(save.bounties ?? [], Date.now()),
       completedBounties: save.completedBounties ?? [],
       bountiesCompletedTotal: save.bountiesCompletedTotal ?? 0,
       savedAt: save.savedAt,
@@ -256,11 +256,13 @@ export const useGameStore = create<GameState>((set, get) => {
     })
   }
 
-  // Settle the bounty board (pay/complete, expire, refill), banking any reward
-  // and appending to the completed log. Progress is credited by callers before
-  // this runs (via `creditBounties`); this only reacts to the results and to
-  // wall-clock deadlines. A no-op settle that leaves the board reference
-  // unchanged writes nothing, so calling it every tick is cheap.
+  // Settle the daily-challenge board: bank the reward for any newly-completed
+  // challenge (it stays on the board marked done until the daily reset), append
+  // it to the completed log, and redraw the whole set when the day rolls over.
+  // Progress is credited by callers before this runs (via `creditBounties`); this
+  // only reacts to the results and to the wall-clock day boundary. A no-op settle
+  // that leaves the board reference unchanged writes nothing, so calling it every
+  // tick is cheap.
   const commitBounties = (board: ActiveBounty[]) => {
     const now = Date.now()
     const { board: settled, completed, reward } = settleBounties(board, now)
@@ -560,7 +562,7 @@ export const useGameStore = create<GameState>((set, get) => {
         crossovers: new Map(),
         money: config.startingMoney,
         market: seedMarket(now),
-        bounties: seedBounties(now),
+        bounties: seedDailyBounties(now),
         completedBounties: [],
         bountiesCompletedTotal: 0,
         transit: new Map(),

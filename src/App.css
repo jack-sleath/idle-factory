@@ -375,6 +375,14 @@
   overflow-y: auto;
 }
 
+.bounty__reset {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 8px;
+}
+
 .bounty__list {
   list-style: none;
   margin: 0;
@@ -382,6 +390,17 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.bounty.is-done {
+  border-color: rgba(110, 231, 168, 0.35);
+  background: rgba(110, 231, 168, 0.08);
+}
+
+.bounty__done {
+  color: #6ee7a8;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .bounty {

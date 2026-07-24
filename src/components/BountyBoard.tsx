@@ -5,7 +5,7 @@ import type { ActiveBounty } from '../game/bounties'
 import { formatDuration, formatMoney } from '../lib/format'
 import { Emoji } from './Emoji'
 
-/** A concrete one-line description of what a bounty asks for. */
+/** A concrete one-line description of what a challenge asks for. */
 function goalLabel(b: ActiveBounty): string {
   switch (b.objective) {
     case 'earn':
@@ -20,42 +20,48 @@ function goalLabel(b: ActiveBounty): string {
 }
 
 /**
- * The bounty board: a rotating set of timed objectives (see `game/bounties.ts`).
- * Deadlines count down in real time — a local 1s clock drives the countdown so it
- * ticks even between simulation frames — while progress only advances during
- * active play. Completing one banks a flat coin reward and logs it below; a
- * completed or expired bounty is replaced by the store to keep the board full.
+ * Daily challenges: a set of harder objectives that refresh once a day (see
+ * `game/bounties.ts`). The whole set shares one deadline — the next local
+ * midnight — so a single "Resets in…" countdown drives the board (a local 1s
+ * clock keeps it live between simulation frames), while progress only advances
+ * during active play. Completing one banks a flat coin reward, logs it below, and
+ * leaves it on the board marked done; the set is redrawn at the daily reset.
  */
 export function BountyBoard({ onClose }: { onClose: () => void }) {
   const bounties = useGameStore((s) => s.bounties)
   const completed = useGameStore((s) => s.completedBounties)
   const completedTotal = useGameStore((s) => s.bountiesCompletedTotal)
 
-  // A once-a-second wall clock so the countdowns stay live independent of ticks.
+  // A once-a-second wall clock so the reset countdown stays live independent of ticks.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
+  // Every challenge shares the day's deadline, so one countdown covers the board.
+  const resetsIn = bounties.length > 0 ? Math.max(0, bounties[0].deadline - now) : 0
+
   return (
-    <aside className="panel panel--bounties" aria-label="Bounty board">
+    <aside className="panel panel--bounties" aria-label="Daily challenges">
       <header className="panel__head">
         <span className="panel__title">
-          <Emoji emoji="📋" size={18} label="bounties" /> Bounties
+          <Emoji emoji="📋" size={18} label="daily challenges" /> Daily Challenges
         </span>
         <button type="button" className="panel__close" aria-label="Close" onClick={onClose}>
           ✕
         </button>
       </header>
       <div className="panel__body">
+        <div className="bounty__reset" title="Time until the challenges refresh">
+          🔄 Resets in {formatDuration(resetsIn)}
+        </div>
         <ul className="bounty__list">
           {bounties.map((b) => {
-            const remaining = b.deadline - now
-            const done = b.progress >= b.target
+            const done = b.completedAt !== undefined || b.progress >= b.target
             const pct = Math.max(0, Math.min(100, (b.progress / b.target) * 100))
             return (
-              <li key={b.id} className="bounty">
+              <li key={b.id} className={`bounty${done ? ' is-done' : ''}`}>
                 <div className="bounty__top">
                   <Emoji emoji={b.emoji} size={18} label="" />
                   <span className="bounty__name" title={b.title}>
@@ -68,18 +74,13 @@ export function BountyBoard({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="bounty__meta">
                   <span className="bounty__goal">{goalLabel(b)}</span>
-                  <span
-                    className={`bounty__timer${!done && remaining < 60_000 ? ' is-urgent' : ''}`}
-                    title="Time remaining"
-                  >
-                    ⏳ {remaining > 0 ? formatDuration(remaining) : 'expiring…'}
-                  </span>
+                  {done && <span className="bounty__done">✅ Done</span>}
                 </div>
                 <div className="bounty__bar" role="progressbar" aria-valuenow={Math.floor(pct)}>
                   <div className={`bounty__fill${done ? ' is-done' : ''}`} style={{ width: `${pct}%` }} />
                 </div>
                 <div className="bounty__progress">
-                  {done ? 'Complete — banking…' : `${formatMoney(Math.floor(b.progress))} / ${formatMoney(b.target)}`}
+                  {done ? 'Complete' : `${formatMoney(Math.floor(b.progress))} / ${formatMoney(b.target)}`}
                 </div>
               </li>
             )
@@ -93,7 +94,7 @@ export function BountyBoard({ onClose }: { onClose: () => void }) {
           <span className="bounty__log-count">{completedTotal}</span>
         </div>
         {completed.length === 0 ? (
-          <p className="panel__empty">Finish a bounty to log it here.</p>
+          <p className="panel__empty">Finish a challenge to log it here.</p>
         ) : (
           <ul className="bounty__log">
             {completed.slice(0, 8).map((c, i) => (

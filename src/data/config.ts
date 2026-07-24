@@ -108,12 +108,14 @@ export const config = {
   chunkSize: 16,
 
   /**
-   * Bounty board: a rotating set of short, timed objectives that each pay a
-   * one-time coin bounty (see `src/game/bounties.ts`). `boardSize` bounties are
-   * live at once; a completed or expired one is immediately replaced so the
-   * board stays full. Rewards are deliberately a small garnish on factory income
-   * (never a permanent multiplier), so a recurring board can't distort the tuned
-   * income/cost race. `completedLogCap` bounds the persisted completed history.
+   * Daily challenges: a set of `boardSize` harder objectives drawn once per day
+   * (each pays a one-time coin reward — see `src/game/bounties.ts`). The whole set
+   * shares a deadline at the next local midnight; completing one banks its reward
+   * and leaves it on the board marked done (no mid-day replacement), and the set
+   * is redrawn at the daily reset. Rewards are deliberately a small garnish on
+   * factory income (never a permanent multiplier), and the daily cadence keeps
+   * that garnish small, so the board can't distort the tuned income/cost race.
+   * `completedLogCap` bounds the persisted completed history.
    */
   bounties: { boardSize: 3, completedLogCap: 50 },
 }
