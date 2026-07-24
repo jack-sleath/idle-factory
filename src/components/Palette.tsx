@@ -21,6 +21,7 @@ export function Palette() {
   const setTool = useGameStore((s) => s.setTool)
   const money = useGameStore((s) => s.money)
   const world = useGameStore((s) => s.world)
+  const buildCostMultiplier = useGameStore((s) => s.townModifiers.buildCostMultiplier)
   // worldRev changes whenever the world is mutated in place, so prices/counts
   // recompute even though the `world` Map reference is stable.
   useGameStore((s) => s.worldRev)
@@ -30,8 +31,15 @@ export function Palette() {
       <div className="palette__group">
         {CATALOG.map((entry) => {
           const t: Tool = { kind: 'build', catalogId: entry.id }
-          const cost = effectiveCost(entry, countPlaced(world, entry.id))
+          // The full list price, and what the player actually pays after the
+          // town-hall mason build-cost discount (matches gameStore.place()).
+          const base = effectiveCost(entry, countPlaced(world, entry.id))
+          const cost = Math.round(base * buildCostMultiplier)
+          const discounted = cost < base
           const affordable = money >= cost
+          const title = affordable
+            ? entry.name
+            : `${entry.name} — costs ${formatMoney(cost)}`
           return (
             <button
               key={entry.id}
@@ -39,12 +47,21 @@ export function Palette() {
               className={`palette__btn${sameTool(t, tool) ? ' is-active' : ''}`}
               onClick={() => setTool(t)}
               disabled={!affordable}
-              title={affordable ? entry.name : `${entry.name} — costs ${formatMoney(cost)}`}
+              title={discounted ? `${title} (was ${formatMoney(base)})` : title}
             >
               <Emoji emoji={entry.emoji} size={26} label={entry.name} />
               <span className="palette__label">{entry.name}</span>
               <span className={`palette__cost${cost === 0 ? ' is-free' : ''}`}>
-                {cost === 0 ? 'Free' : formatMoney(cost)}
+                {cost === 0 ? (
+                  'Free'
+                ) : discounted ? (
+                  <>
+                    <span className="palette__cost-orig">{formatMoney(base)}</span>
+                    <span className="palette__cost-now">{formatMoney(cost)}</span>
+                  </>
+                ) : (
+                  formatMoney(cost)
+                )}
               </span>
             </button>
           )

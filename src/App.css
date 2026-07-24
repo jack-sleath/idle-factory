@@ -273,6 +273,19 @@
   color: #6ee7a8;
 }
 
+/* Sale-price display when the mason villager discount applies: the full list
+   price struck through, followed by the discounted price the player pays. */
+.palette__cost-orig {
+  margin-right: 3px;
+  font-weight: 400;
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.palette__cost-now {
+  color: #6ee7a8;
+}
+
 /* Storage inspector, floated over the world in the top-right of the stage. */
 .panel {
   position: absolute;
