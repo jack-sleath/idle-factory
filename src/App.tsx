@@ -53,10 +53,8 @@ export default function App() {
   useGameLoop()
   useMarketLoop()
   const money = useGameStore((s) => s.money)
-  const [marketOpen, setMarketOpen] = useState(false)
-  const [bountiesOpen, setBountiesOpen] = useState(false)
-  const [recipeOpen, setRecipeOpen] = useState(false)
-  const [saveOpen, setSaveOpen] = useState(false)
+  // Only one HUD panel is open at a time — opening one closes any other.
+  const [activePanel, setActivePanel] = useState<'market' | 'bounties' | 'recipe' | 'saves' | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
 
@@ -78,14 +76,14 @@ export default function App() {
     }
   }, [menuOpen])
 
-  // Each menu entry toggles its panel and closes the menu.
-  const menuItems: { label: string; emoji: string; open: boolean; toggle: () => void }[] = [
-    { label: 'Market', emoji: '📈', open: marketOpen, toggle: () => setMarketOpen((o) => !o) },
-    { label: 'Daily Challenges', emoji: '📋', open: bountiesOpen, toggle: () => setBountiesOpen((o) => !o) },
-    { label: 'Recipe Book', emoji: '📖', open: recipeOpen, toggle: () => setRecipeOpen((o) => !o) },
-    { label: 'Saves', emoji: '💾', open: saveOpen, toggle: () => setSaveOpen((o) => !o) },
+  // Each menu entry opens its panel (closing whichever was open), or closes it
+  // if it's already the active one.
+  const menuItems: { label: string; emoji: string; id: 'market' | 'bounties' | 'recipe' | 'saves' }[] = [
+    { label: 'Market', emoji: '📈', id: 'market' },
+    { label: 'Daily Challenges', emoji: '📋', id: 'bounties' },
+    { label: 'Recipe Book', emoji: '📖', id: 'recipe' },
+    { label: 'Saves', emoji: '💾', id: 'saves' },
   ]
-  const anyPanelOpen = menuItems.some((m) => m.open)
 
   return (
     <div className="app">
@@ -100,7 +98,7 @@ export default function App() {
           <div className="hud__menu" ref={menuRef}>
             <button
               type="button"
-              className={`hud__btn${menuOpen || anyPanelOpen ? ' is-active' : ''}`}
+              className={`hud__btn${menuOpen || activePanel !== null ? ' is-active' : ''}`}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               aria-label="Menu"
@@ -118,10 +116,10 @@ export default function App() {
                     key={m.label}
                     type="button"
                     role="menuitemcheckbox"
-                    aria-checked={m.open}
-                    className={`hud__dropdown-item${m.open ? ' is-active' : ''}`}
+                    aria-checked={activePanel === m.id}
+                    className={`hud__dropdown-item${activePanel === m.id ? ' is-active' : ''}`}
                     onClick={() => {
-                      m.toggle()
+                      setActivePanel((cur) => (cur === m.id ? null : m.id))
                       setMenuOpen(false)
                     }}
                   >
@@ -144,10 +142,10 @@ export default function App() {
         <StoragePanel />
         <TownHallPanel />
         <TeleporterPanel />
-        {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
-        {bountiesOpen && <BountyBoard onClose={() => setBountiesOpen(false)} />}
-        {recipeOpen && <RecipeBook onClose={() => setRecipeOpen(false)} />}
-        {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
+        {activePanel === 'market' && <MarketPanel onClose={() => setActivePanel(null)} />}
+        {activePanel === 'bounties' && <BountyBoard onClose={() => setActivePanel(null)} />}
+        {activePanel === 'recipe' && <RecipeBook onClose={() => setActivePanel(null)} />}
+        {activePanel === 'saves' && <SaveMenu onClose={() => setActivePanel(null)} />}
         <AwaySummary />
         <Onboarding />
         {adminOpen && <AdminScreen onClose={() => (window.location.hash = '')} />}
