@@ -7,6 +7,7 @@ import { config } from '../src/data/config'
 import { CATALOG_BY_ID } from '../src/data'
 import { effectiveCost } from '../src/game/economy'
 import { IDENTITY_TOWN_MODIFIERS } from '../src/game/town'
+import { dayStart, nextDayStart } from '../src/game/bounties'
 
 function resetToEmptyWorld() {
   localStorage.clear()
@@ -138,7 +139,8 @@ describe('bounty board (store wiring)', () => {
     target: 100,
     progress: 0,
     reward: 500,
-    deadline: Date.now() + 60_000,
+    deadline: nextDayStart(Date.now()),
+    day: dayStart(Date.now()),
     ...over,
   })
 
@@ -151,12 +153,13 @@ describe('bounty board (store wiring)', () => {
 
     store.sellAll(3, 0)
     const s = useGameStore.getState()
-    expect(s.money).toBe(100 + 500) // sale proceeds + bounty reward
+    expect(s.money).toBe(100 + 500) // sale proceeds + challenge reward
     expect(s.bountiesCompletedTotal).toBe(1)
     expect(s.completedBounties[0].reward).toBe(500)
-    // The completed bounty is gone and the board is refilled to full.
-    expect(s.bounties.some((b) => b.id === 'test-bounty')).toBe(false)
-    expect(s.bounties).toHaveLength(config.bounties.boardSize)
+    // The completed challenge stays on the board marked done until the daily
+    // reset — it is not removed or replaced mid-day.
+    const done = s.bounties.find((b) => b.id === 'test-bounty')
+    expect(done?.completedAt).toBeDefined()
   })
 
   it('credits a sell bounty when an auto-seller sells the matching item', () => {

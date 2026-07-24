@@ -17,20 +17,28 @@
   padding-top: max(10px, env(safe-area-inset-top));
 }
 
+/* Title + tagline share a left-hand brand group so the tagline reads as a
+   subtitle of the title rather than floating in the middle of the bar. */
+.hud__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0; /* allow the group to shrink/truncate before it shoves the controls off-screen */
+}
+
 .hud__title {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-weight: 600;
   font-size: 16px;
-  min-width: 0; /* allow the label to shrink/truncate before it shoves the controls off-screen */
-  overflow: hidden;
   white-space: nowrap;
 }
 
 .hud__hint {
   font-size: 12px;
   opacity: 0.6;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -66,6 +74,63 @@
   background: rgba(240, 180, 41, 0.16);
 }
 
+.hud__menu-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* The panel toggles collapse into a single menu; its dropdown floats over the
+   stage so the top bar stays uncluttered (and leaves room for the tagline). */
+.hud__menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.hud__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: var(--chrome);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.hud__dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hud__dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hud__dropdown-item.is-active {
+  border-color: var(--accent);
+  background: rgba(240, 180, 41, 0.16);
+}
+
+.hud__dropdown-label {
+  flex: 1;
+}
+
 .hud__money {
   display: inline-flex;
   align-items: center;
@@ -84,16 +149,19 @@
   text-align: right;
 }
 
-/* On phone-width viewports (incl. the installed PWA's standalone window) the
-   title + hint + controls overflow a single row, which clipped the rightmost
-   HUD items — the Recipe Book button and money readout — off the right edge.
-   Drop the decorative hint and tighten spacing so every control stays on-screen. */
+/* On phone-width viewports (incl. the installed PWA's standalone window) an
+   inline title + tagline + controls overflow a single row. Now that the panel
+   toggles collapse into one menu button there's room to keep the tagline —
+   stack it under the title so the title never truncates and every control stays
+   on-screen. */
 @media (max-width: 560px) {
   .hud {
     gap: 8px;
   }
-  .hud__hint {
-    display: none;
+  .hud__brand {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
   }
   .hud__right {
     gap: 8px;
@@ -375,6 +443,14 @@
   overflow-y: auto;
 }
 
+.bounty__reset {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 8px;
+}
+
 .bounty__list {
   list-style: none;
   margin: 0;
@@ -382,6 +458,17 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.bounty.is-done {
+  border-color: rgba(110, 231, 168, 0.35);
+  background: rgba(110, 231, 168, 0.08);
+}
+
+.bounty__done {
+  color: #6ee7a8;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .bounty {

@@ -10,7 +10,7 @@ import bountiesRaw from './bounties.json'
 export const ITEMS = itemsRaw as ItemDef[]
 export const CATALOG = catalogRaw as CatalogEntry[]
 export const RECIPES = recipesRaw as Recipes
-/** Bounty-board objective templates (the board draws live bounties from these). */
+/** Daily-challenge objective templates (the board draws live challenges from these). */
 export const BOUNTY_TEMPLATES = bountiesRaw as BountyTemplate[]
 
 export const ITEMS_BY_ID: Record<string, ItemDef> = Object.fromEntries(

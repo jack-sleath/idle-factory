@@ -89,8 +89,8 @@ export function validateData(): string[] {
     if (!known(r.out)) errors.push(`combiner recipe output "${r.out}" is not a defined item`)
   }
 
-  // Bounty templates: the board draws live bounties from these, so a broken
-  // catalog/item reference would produce an un-completable bounty. Catch it here.
+  // Daily-challenge templates: the board draws live challenges from these, so a
+  // broken catalog/item reference would produce an un-completable one. Catch it here.
   const catalogIds = new Set(CATALOG.map((c) => c.id))
   const objectives = new Set(['earn', 'sell', 'place', 'bank'])
   for (const b of BOUNTY_TEMPLATES) {
@@ -103,7 +103,6 @@ export function validateData(): string[] {
     if (!(typeof min === 'number' && typeof max === 'number' && min > 0 && max >= min)) {
       errors.push(`bounty "${b.id}" needs a targetRange [min, max] with 0 < min <= max`)
     }
-    if (!(b.durationMinutes > 0)) errors.push(`bounty "${b.id}" needs a positive durationMinutes`)
     if (!(b.rewardPerUnit >= 0)) errors.push(`bounty "${b.id}" needs a non-negative rewardPerUnit`)
     if (b.objective === 'place') {
       if (!b.catalogId || !catalogIds.has(b.catalogId)) {

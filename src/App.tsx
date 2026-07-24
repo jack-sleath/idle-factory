@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Emoji } from './components/Emoji'
 import { GameCanvas } from './components/GameCanvas'
 import { ActionTools } from './components/ActionTools'
@@ -53,60 +53,83 @@ export default function App() {
   useGameLoop()
   useMarketLoop()
   const money = useGameStore((s) => s.money)
-  const [marketOpen, setMarketOpen] = useState(false)
-  const [bountiesOpen, setBountiesOpen] = useState(false)
-  const [recipeOpen, setRecipeOpen] = useState(false)
-  const [saveOpen, setSaveOpen] = useState(false)
+  // Only one HUD panel is open at a time — opening one closes any other.
+  const [activePanel, setActivePanel] = useState<'market' | 'bounties' | 'recipe' | 'saves' | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
+
+  // Close the HUD menu on an outside tap or Escape (only while it's open).
+  const menuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!menuOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
+
+  // Each menu entry opens its panel (closing whichever was open), or closes it
+  // if it's already the active one.
+  const menuItems: { label: string; emoji: string; id: 'market' | 'bounties' | 'recipe' | 'saves' }[] = [
+    { label: 'Market', emoji: '📈', id: 'market' },
+    { label: 'Daily Challenges', emoji: '📋', id: 'bounties' },
+    { label: 'Recipe Book', emoji: '📖', id: 'recipe' },
+    { label: 'Saves', emoji: '💾', id: 'saves' },
+  ]
 
   return (
     <div className="app">
       <header className="hud">
-        <span className="hud__title">
-          <Emoji emoji="🏭" size={22} label="factory" /> Auto-Exportica
-        </span>
-        <span className="hud__hint">Pick a tool, then tap a cell</span>
+        <div className="hud__brand">
+          <span className="hud__title">
+            <Emoji emoji="🏭" size={22} label="factory" /> Auto-Exportica
+          </span>
+          <span className="hud__hint">Pick a tool, then tap a cell</span>
+        </div>
         <div className="hud__right">
-          <button
-            type="button"
-            className={`hud__btn${marketOpen ? ' is-active' : ''}`}
-            aria-pressed={marketOpen}
-            aria-label="Market"
-            title="Market"
-            onClick={() => setMarketOpen((open) => !open)}
-          >
-            <Emoji emoji="📈" size={18} label="market" />
-          </button>
-          <button
-            type="button"
-            className={`hud__btn${bountiesOpen ? ' is-active' : ''}`}
-            aria-pressed={bountiesOpen}
-            aria-label="Bounties"
-            title="Bounties"
-            onClick={() => setBountiesOpen((open) => !open)}
-          >
-            <Emoji emoji="📋" size={18} label="bounties" />
-          </button>
-          <button
-            type="button"
-            className={`hud__btn${recipeOpen ? ' is-active' : ''}`}
-            aria-pressed={recipeOpen}
-            aria-label="Recipe book"
-            title="Recipe book"
-            onClick={() => setRecipeOpen((open) => !open)}
-          >
-            <Emoji emoji="📖" size={18} label="recipe book" />
-          </button>
-          <button
-            type="button"
-            className={`hud__btn${saveOpen ? ' is-active' : ''}`}
-            aria-pressed={saveOpen}
-            aria-label="Saves"
-            title="Saves"
-            onClick={() => setSaveOpen((open) => !open)}
-          >
-            <Emoji emoji="💾" size={18} label="saves" />
-          </button>
+          <div className="hud__menu" ref={menuRef}>
+            <button
+              type="button"
+              className={`hud__btn${menuOpen || activePanel !== null ? ' is-active' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Menu"
+              title="Menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <span className="hud__menu-icon" aria-hidden="true">
+                ☰
+              </span>
+            </button>
+            {menuOpen && (
+              <div className="hud__dropdown" role="menu">
+                {menuItems.map((m) => (
+                  <button
+                    key={m.label}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={activePanel === m.id}
+                    className={`hud__dropdown-item${activePanel === m.id ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setActivePanel((cur) => (cur === m.id ? null : m.id))
+                      setMenuOpen(false)
+                    }}
+                  >
+                    <Emoji emoji={m.emoji} size={18} label="" />
+                    <span className="hud__dropdown-label">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="hud__money" title="Money">
             <Emoji emoji="💰" size={18} label="money" />
             <span className="hud__money-value">{formatMoney(money)}</span>
@@ -119,10 +142,10 @@ export default function App() {
         <StoragePanel />
         <TownHallPanel />
         <TeleporterPanel />
-        {marketOpen && <MarketPanel onClose={() => setMarketOpen(false)} />}
-        {bountiesOpen && <BountyBoard onClose={() => setBountiesOpen(false)} />}
-        {recipeOpen && <RecipeBook onClose={() => setRecipeOpen(false)} />}
-        {saveOpen && <SaveMenu onClose={() => setSaveOpen(false)} />}
+        {activePanel === 'market' && <MarketPanel onClose={() => setActivePanel(null)} />}
+        {activePanel === 'bounties' && <BountyBoard onClose={() => setActivePanel(null)} />}
+        {activePanel === 'recipe' && <RecipeBook onClose={() => setActivePanel(null)} />}
+        {activePanel === 'saves' && <SaveMenu onClose={() => setActivePanel(null)} />}
         <AwaySummary />
         <Onboarding />
         {adminOpen && <AdminScreen onClose={() => (window.location.hash = '')} />}
