@@ -41,6 +41,37 @@ export function effectiveVillagers(count: number): number {
   return Math.pow(Math.max(0, count), config.townScaling.diminishingExponent)
 }
 
+/**
+ * Multiplier for a *reduction* lever (guard→volatility, mason→build cost).
+ *
+ * The reduction (`1 - multiplier`) grows linearly at `rate` per effective
+ * villager — exactly the old behaviour — until it reaches the soft knee
+ * (`1 - knee`). Past the knee it keeps growing but bends, approaching a maximum
+ * reduction of `1 - asymptote` without ever reaching it, and the join is
+ * C¹-continuous (same slope on both sides), so there's no visible kink. The
+ * returned multiplier therefore falls from 1 toward `asymptote` and never hits
+ * 0: builds are never free and the market is never perfectly frozen, yet every
+ * extra villager still helps a little — nothing past the old cap is wasted.
+ */
+export function reductionMultiplier(
+  effCount: number,
+  rate: number,
+  knee: number,
+  asymptote: number,
+): number {
+  const linear = Math.max(0, effCount) * rate
+  const kneeReduction = 1 - knee
+  const maxReduction = 1 - asymptote
+  // Below the knee (or if misconfigured so there's no head-room): pure linear,
+  // clamped to the asymptote so it can never cross it.
+  if (linear <= kneeReduction || maxReduction <= kneeReduction) {
+    return 1 - Math.min(linear, maxReduction)
+  }
+  const span = maxReduction - kneeReduction
+  const reduction = maxReduction - span * Math.exp(-(linear - kneeReduction) / span)
+  return 1 - reduction
+}
+
 /** Sum banked villagers across every town hall, keyed by villager item id. */
 export function sumVillagers(townHalls: Map<string, TownHallState>): Record<string, number> {
   const totals: Record<string, number> = {}
@@ -58,12 +89,21 @@ export function computeTownModifiers(townHalls: Map<string, TownHallState>): Tow
   // `n(id)` is the *effective* count after diminishing returns, not the raw
   // tally — so every lever below inherits the non-linear scaling for free.
   const n = (id: string) => effectiveVillagers(totals[id] ?? 0)
-  const floorAt = (value: number, floor: number) => Math.max(floor, value)
   return {
     sellMultiplier: 1 + n('merchant') * lv.merchant + n('villager') * lv.villager,
-    volatilityMultiplier: floorAt(1 - n('guard') * lv.guard, config.townLeverFloors.volatility),
+    volatilityMultiplier: reductionMultiplier(
+      n('guard'),
+      lv.guard,
+      config.townLeverFloors.volatility,
+      config.townLeverAsymptotes.volatility,
+    ),
     offlineMultiplier: 1 + n('innkeeper') * lv.innkeeper,
-    buildCostMultiplier: floorAt(1 - n('mason') * lv.mason, config.townLeverFloors.buildCost),
+    buildCostMultiplier: reductionMultiplier(
+      n('mason'),
+      lv.mason,
+      config.townLeverFloors.buildCost,
+      config.townLeverAsymptotes.buildCost,
+    ),
     ceilingMultiplier: {
       food: 1 + n('farmer') * lv.farmer,
       material: 1 + n('miner') * lv.miner,

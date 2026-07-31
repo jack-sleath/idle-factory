@@ -35,15 +35,31 @@ describe('town modifiers', () => {
     expect(m.sellMultiplier).toBeCloseTo(1 + eff(5) * lv.merchant, 10)
   })
 
-  it('guards reduce volatility but never past the floor', () => {
+  it('guards reduce volatility linearly below the knee', () => {
+    // Small counts keep the exact old linear behaviour (well under the knee).
     expect(computeTownModifiers(halls({ guard: 10 })).volatilityMultiplier).toBeCloseTo(
       1 - eff(10) * lv.guard,
       10,
     )
-    // A huge guard count clamps at the configured floor rather than going ≤0.
-    expect(computeTownModifiers(halls({ guard: 100000 })).volatilityMultiplier).toBe(
-      config.townLeverFloors.volatility,
-    )
+  })
+
+  it('reduction levers soften past the knee but never cap or hit zero', () => {
+    const asym = config.townLeverAsymptotes.volatility
+    // Far past the old hard cap, extra guards STILL help a little more...
+    const big = computeTownModifiers(halls({ guard: 100000 })).volatilityMultiplier
+    const bigger = computeTownModifiers(halls({ guard: 400000 })).volatilityMultiplier
+    expect(bigger).toBeLessThan(big)
+    // ...but the multiplier never dips to (or below) the asymptote: the market
+    // is never perfectly frozen and build cost is never free.
+    expect(big).toBeGreaterThan(asym)
+    expect(bigger).toBeGreaterThan(asym)
+    // The knee join is continuous: approaching it from below matches the old
+    // linear value (no visible jump).
+    const kneeReduction = 1 - config.townLeverFloors.volatility
+    const atKnee = computeTownModifiers(
+      halls({ guard: Math.round((kneeReduction / lv.guard) ** 2) }),
+    ).volatilityMultiplier
+    expect(atKnee).toBeCloseTo(config.townLeverFloors.volatility, 2)
   })
 
   it('farmers lift the food ceiling; miners lift material and valuable', () => {
