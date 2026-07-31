@@ -74,8 +74,25 @@ export const config = {
     farmer: 0.02,
     miner: 0.02,
   },
-  /** Floors for the reduction levers, so they can't drive a factor to zero. */
+  /**
+   * Reduction levers (guard→volatility, mason→build cost) used to slam into a
+   * hard floor: once `√N × rate` reached `1 - floor` the value was clamped and
+   * every further villager did *nothing*. Now the floor is a soft **knee**: up
+   * to that reduction the lever is unchanged (linear in the effective count),
+   * and past the knee the reduction keeps growing but bends, approaching the
+   * (much smaller) `townLeverAsymptotes` value without ever reaching it. So
+   * builds are never free and the market is never perfectly frozen, but extra
+   * guards/masons are never wasted — they always help a little more. See
+   * `reductionMultiplier` in `town.ts`.
+   */
   townLeverFloors: { volatility: 0.25, buildCost: 0.25 },
+  /**
+   * The true minimum multiplier each reduction lever asymptotically approaches
+   * (but never reaches) once past its knee. Small = lots of head-room for a
+   * huge villager count to keep mattering; strictly > 0 so cost/volatility can
+   * never hit zero. Must be below the corresponding `townLeverFloors` value.
+   */
+  townLeverAsymptotes: { volatility: 0.02, buildCost: 0.02 },
   /**
    * Diminishing returns on banked villagers. Each lever's strength scales with
    * `count ^ diminishingExponent` rather than `count`, so villagers are NOT
