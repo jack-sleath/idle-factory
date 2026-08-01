@@ -1,0 +1,58 @@
+[
+  {
+    "id": "pocket-monsters",
+    "name": "Pocket Monsters",
+    "description": "Bank one of every villager type in a single town hall. Gotta recruit 'em all.",
+    "emoji": "🧢",
+    "external": { "steam": "ACH_POCKET_MONSTERS" }
+  },
+  {
+    "id": "full-employment",
+    "name": "Full Employment",
+    "description": "Have every specialist villager — merchant, guard, innkeeper, mason, farmer and miner — working in your town.",
+    "emoji": "💼",
+    "external": { "steam": "ACH_FULL_EMPLOYMENT" }
+  },
+  {
+    "id": "duck-customer",
+    "name": "Duck Customer",
+    "description": "Sell grapes and lemonade at the same stall. \"Got any grapes?\"",
+    "emoji": "🦆",
+    "external": { "steam": "ACH_DUCK_CUSTOMER" }
+  },
+  {
+    "id": "breakfast-club",
+    "name": "Breakfast Club",
+    "description": "Sell pancakes and an omelette at the same stall. The most important meal of the day.",
+    "emoji": "🍳",
+    "external": { "steam": "ACH_BREAKFAST_CLUB" }
+  },
+  {
+    "id": "sweet-and-savoury",
+    "name": "Sweet and Savoury",
+    "description": "Sell pizza and ice cream at the same stall. No judgement here.",
+    "emoji": "🍨",
+    "external": { "steam": "ACH_SWEET_AND_SAVOURY" }
+  },
+  {
+    "id": "cornucopia",
+    "name": "Cornucopia",
+    "description": "Sell eight different kinds of goods through one stall.",
+    "emoji": "🧺",
+    "external": { "steam": "ACH_CORNUCOPIA" }
+  },
+  {
+    "id": "diamond-hands",
+    "name": "Diamond Hands",
+    "description": "Fill a storage to the brim with diamonds.",
+    "emoji": "💎",
+    "external": { "steam": "ACH_DIAMOND_HANDS" }
+  },
+  {
+    "id": "wormhole",
+    "name": "Wormhole",
+    "description": "Link a send pad and a receive pad on the same teleporter channel.",
+    "emoji": "🌀",
+    "external": { "steam": "ACH_WORMHOLE" }
+  }
+]

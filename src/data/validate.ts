@@ -1,5 +1,6 @@
-import { BOUNTY_TEMPLATES, CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
+import { ACHIEVEMENT_META, BOUNTY_TEMPLATES, CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
 import { ITEM_CATEGORIES } from '../game/types'
+import { assertAchievementsWired } from '../game/achievements'
 import { config } from './config'
 
 // Referential-integrity check over the content JSON (items / catalog / recipes).
@@ -27,6 +28,7 @@ export function validateData(): string[] {
   dupes(ITEMS.map((i) => i.id), 'item')
   dupes(CATALOG.map((c) => c.id), 'catalog')
   dupes(BOUNTY_TEMPLATES.map((b) => b.id), 'bounty')
+  dupes(ACHIEVEMENT_META.map((a) => a.id), 'achievement')
 
   // Every item must carry a known category (used to group the market/shop UI).
   const categories = new Set<string>(ITEM_CATEGORIES)
@@ -122,6 +124,26 @@ export function validateData(): string[] {
       }
     }
   }
+
+  // Achievements: permanent, hand-authored feats (see `game/achievements.ts`).
+  // Metadata is content (checked here); the condition is code. Validate the
+  // metadata shape, then assert every metadata id is wired to exactly one
+  // predicate (and no predicate is orphaned) so a rename can't leave a dangling,
+  // un-unlockable achievement.
+  for (const a of ACHIEVEMENT_META) {
+    if (!a.name) errors.push(`achievement "${a.id}" has no name`)
+    if (!a.description) errors.push(`achievement "${a.id}" has no description`)
+    if (!a.emoji) errors.push(`achievement "${a.id}" has no emoji`)
+    // External-service id maps must be flat string→string (a provider reads these).
+    if (a.external !== undefined) {
+      for (const [provider, extId] of Object.entries(a.external)) {
+        if (typeof extId !== 'string' || extId.length === 0) {
+          errors.push(`achievement "${a.id}" external["${provider}"] must be a non-empty string`)
+        }
+      }
+    }
+  }
+  errors.push(...assertAchievementsWired())
 
   // Cross-check the lookup index was built over the same item set (guards against
   // an ITEMS_BY_ID that drifts from ITEMS).

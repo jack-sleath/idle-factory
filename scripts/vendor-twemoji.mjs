@@ -48,6 +48,7 @@ const dataDir = path.join(process.cwd(), 'src', 'data')
 const items = JSON.parse(fs.readFileSync(path.join(dataDir, 'items.json'), 'utf8'))
 const catalog = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'))
 const bounties = JSON.parse(fs.readFileSync(path.join(dataDir, 'bounties.json'), 'utf8'))
+const achievements = JSON.parse(fs.readFileSync(path.join(dataDir, 'achievements.json'), 'utf8'))
 
 const UI_CHROME = [
   '🏭', '🔍', '🔄', '❌', '📈', '💾', '❓', '📖',
@@ -55,6 +56,8 @@ const UI_CHROME = [
   '🍽️', '⚔️', '🧱',
   // Bounty board: HUD/header icon, timer, and completed-log check.
   '📋', '⏳', '✅',
+  // Achievements: HUD/panel/toast trophy and the locked-row padlock.
+  '🏆', '🔒',
 ]
 
 const EMOJI = [
@@ -62,6 +65,7 @@ const EMOJI = [
     ...items.map((i) => i.emoji),
     ...catalog.map((c) => c.emoji),
     ...bounties.map((b) => b.emoji),
+    ...achievements.map((a) => a.emoji),
     ...UI_CHROME,
   ]),
 ]

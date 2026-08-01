@@ -103,6 +103,14 @@ export interface SimState {
    * doesn't read it back. Absent/empty on ticks with no live sale.
    */
   sold?: Map<string, number>
+  /**
+   * cell key → the item a seller sold THIS tick (online only; a seller sells at
+   * most one item per tick, so one entry per selling seller). Lets the store
+   * accumulate which item types have passed through each individual seller — the
+   * source for co-occurrence achievements (e.g. two specific goods at one stand).
+   * Absent/empty on ticks with no live sale.
+   */
+  soldBySeller?: Map<string, string>
   /** Live sale price per item id (from the market, M7); base price if absent. */
   prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
@@ -637,6 +645,8 @@ export function step(state: SimState): SimState {
   const nextCrossovers = new Map<string, CrossoverState>()
   // Per-item live sales this tick (for the bounty board's `sell` objectives).
   const nextSold = new Map<string, number>()
+  // Per-seller item sold this tick (for co-occurrence achievements).
+  const nextSoldBySeller = new Map<string, string>()
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink (tx,ty):
@@ -779,6 +789,7 @@ export function step(state: SimState): SimState {
             // Liquidate at the live market price (base price if the market has none).
             money += prices[incoming] ?? basePrice(incoming)
             nextSold.set(incoming, (nextSold.get(incoming) ?? 0) + 1)
+            nextSoldBySeller.set(key, incoming)
           } else {
             // Offline: buffer intake per item so catch-up can measure throughput.
             const prev = nextSellerBuffers.get(key) ?? {}
@@ -855,6 +866,7 @@ export function step(state: SimState): SimState {
     transit: nextTransit,
     money,
     sold: nextSold,
+    soldBySeller: nextSoldBySeller,
     prices,
     online,
     tick,

@@ -495,3 +495,75 @@ describe('persistence (reload restores layout)', () => {
     ])
   })
 })
+
+describe('achievements (store integration)', () => {
+  beforeEach(() => {
+    resetToEmptyWorld()
+    useGameStore.setState({
+      unlockedAchievements: [],
+      sellerSales: new Map(),
+      achievementToasts: [],
+    })
+  })
+
+  it('linking a send + receive teleporter on one channel unlocks Wormhole', () => {
+    const store = useGameStore.getState()
+    // Two pads placed but unlinked: nothing unlocks yet.
+    useGameStore.setState({
+      world: new Map([
+        [cellKey(0, 0), { id: 'a', kind: 'teleporter', catalogId: 'teleporter-in', x: 0, y: 0, dir: 'E' }],
+        [cellKey(1, 0), { id: 'b', kind: 'teleporter', catalogId: 'teleporter-out', x: 1, y: 0, dir: 'E' }],
+      ]),
+    })
+    store.setChannel(0, 0, 'coal')
+    expect(useGameStore.getState().unlockedAchievements.map((u) => u.id)).not.toContain('wormhole')
+    // Linking the receive pad on the same channel unlocks it and queues a toast.
+    store.setChannel(1, 0, 'coal')
+    const s = useGameStore.getState()
+    expect(s.unlockedAchievements.map((u) => u.id)).toContain('wormhole')
+    expect(s.achievementToasts.map((d) => d.id)).toContain('wormhole')
+  })
+
+  it('a persisted unlock survives save + reload', () => {
+    const store = useGameStore.getState()
+    useGameStore.setState({
+      world: new Map([
+        [cellKey(0, 0), { id: 'a', kind: 'teleporter', catalogId: 'teleporter-in', x: 0, y: 0, dir: 'E', channel: 'x' }],
+        [cellKey(1, 0), { id: 'b', kind: 'teleporter', catalogId: 'teleporter-out', x: 1, y: 0, dir: 'E' }],
+      ]),
+    })
+    store.setChannel(1, 0, 'x')
+    useGameStore.getState().saveNow()
+    expect(loadSave()!.unlockedAchievements.map((u) => u.id)).toContain('wormhole')
+  })
+
+  it('does not re-unlock or re-toast an achievement already earned', () => {
+    const store = useGameStore.getState()
+    useGameStore.setState({
+      unlockedAchievements: [{ id: 'wormhole', at: 1 }],
+      world: new Map([
+        [cellKey(0, 0), { id: 'a', kind: 'teleporter', catalogId: 'teleporter-in', x: 0, y: 0, dir: 'E', channel: 'x' }],
+        [cellKey(1, 0), { id: 'b', kind: 'teleporter', catalogId: 'teleporter-out', x: 1, y: 0, dir: 'E' }],
+      ]),
+    })
+    store.setChannel(1, 0, 'x')
+    const s = useGameStore.getState()
+    expect(s.unlockedAchievements.filter((u) => u.id === 'wormhole')).toHaveLength(1)
+    expect(s.achievementToasts).toHaveLength(0)
+  })
+
+  it('dismissAchievementToast drains the queue head', () => {
+    const defs = useGameStore.getState().achievementToasts
+    expect(defs).toHaveLength(0)
+    // Seed two toasts and dismiss them one at a time.
+    const two = [
+      { id: 'duck-customer', name: 'Duck Customer', description: '', emoji: '🦆', check: () => true },
+      { id: 'wormhole', name: 'Wormhole', description: '', emoji: '🌀', check: () => true },
+    ]
+    useGameStore.setState({ achievementToasts: two })
+    useGameStore.getState().dismissAchievementToast()
+    expect(useGameStore.getState().achievementToasts.map((d) => d.id)).toEqual(['wormhole'])
+    useGameStore.getState().dismissAchievementToast()
+    expect(useGameStore.getState().achievementToasts).toHaveLength(0)
+  })
+})

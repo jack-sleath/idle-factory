@@ -13,11 +13,21 @@ import {
 import { CATALOG_BY_ID } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
-import { loadSave, makeSave, migrateSave, parseSave, writeSave, type GameSave } from '../game/save'
+import {
+  loadSave,
+  makeSave,
+  migrateSave,
+  parseSave,
+  writeSave,
+  type GameSave,
+  type UnlockedAchievement,
+} from '../game/save'
 import { step, type CrossoverState, type MachineBuffer, type StorageState, type TownHallState } from '../game/tick'
 import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type Market } from '../game/market'
 import { computeOffline, type AwaySummary } from '../game/offline'
 import { computeTownModifiers, sumVillagers, type TownModifiers } from '../game/town'
+import { newlyUnlocked, type AchievementContext, type AchievementDef } from '../game/achievements'
+import { notifyUnlock } from '../game/achievementProviders'
 import {
   creditBounties,
   seedDailyBounties,
@@ -64,6 +74,16 @@ export interface GameState {
   completedBounties: CompletedBounty[]
   /** Lifetime count of completed bounties (survives the capped log above). */
   bountiesCompletedTotal: number
+  /** Permanently unlocked achievements, in unlock order (oldest first). */
+  unlockedAchievements: UnlockedAchievement[]
+  /**
+   * Item types each seller (by cell key) has sold this session — the source for
+   * "sold X and Y at one stand" achievements. In memory only (not persisted): a
+   * running line re-populates it within seconds of a load.
+   */
+  sellerSales: Map<string, Set<string>>
+  /** Queue of just-unlocked achievements awaiting a toast (FIFO; drained by the UI). */
+  achievementToasts: AchievementDef[]
   /** Stock-market state: prices, last-10 histories, and last update time. */
   market: Market
   /** Whether live selling is active (false only during offline sampling). */
@@ -101,6 +121,8 @@ export interface GameState {
   dismissAway: () => void
   /** Advance the simulation by one tick (drives spawners + belt movement). */
   advanceTick: () => void
+  /** Drop the oldest queued achievement toast once the UI has shown it. */
+  dismissAchievementToast: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
   saveNow: () => void
   /** Serialize the current game to a pretty-printed JSON save string (M8). */
@@ -155,6 +177,7 @@ interface InitState {
   bounties: ActiveBounty[]
   completedBounties: CompletedBounty[]
   bountiesCompletedTotal: number
+  unlockedAchievements: UnlockedAchievement[]
 }
 
 function initState(): InitState {
@@ -184,6 +207,7 @@ function initState(): InitState {
       bounties: ensureDailyBoard(saved.bounties ?? [], now),
       completedBounties: saved.completedBounties ?? [],
       bountiesCompletedTotal: saved.bountiesCompletedTotal ?? 0,
+      unlockedAchievements: saved.unlockedAchievements ?? [],
     }
   }
   const world = worldFromMachines(seedStarterKit())
@@ -199,6 +223,7 @@ function initState(): InitState {
     bounties: seedDailyBounties(now),
     completedBounties: [],
     bountiesCompletedTotal: 0,
+    unlockedAchievements: [],
   }
 }
 
@@ -250,6 +275,9 @@ export const useGameStore = create<GameState>((set, get) => {
       bounties: ensureDailyBoard(save.bounties ?? [], Date.now()),
       completedBounties: save.completedBounties ?? [],
       bountiesCompletedTotal: save.bountiesCompletedTotal ?? 0,
+      unlockedAchievements: save.unlockedAchievements ?? [],
+      sellerSales: new Map(), // in-memory only; re-accumulates from the tick stream
+      achievementToasts: [], // a load never re-toasts already-earned achievements
       savedAt: save.savedAt,
       selected: null,
       worldRev: get().worldRev + 1,
@@ -281,8 +309,47 @@ export const useGameStore = create<GameState>((set, get) => {
     scheduleAutosave()
   }
 
-  const { camera, world, chunks, savedAt, money, stores, townHalls, market, bounties, completedBounties, bountiesCompletedTotal } =
-    initState()
+  // Evaluate every locked achievement against the current live state; bank any
+  // now-met one permanently and mirror it to any registered external provider
+  // (Steam, etc. — see `achievementProviders.ts`). Callers must apply their state
+  // change (place/sell/bank/sellerSales) BEFORE calling this, since it reads
+  // straight from the store. Cheap and idempotent — an already-unlocked
+  // achievement is never re-fired — so it is safe to call on every tick.
+  const checkAchievements = () => {
+    const cur = get()
+    const unlockedIds = new Set(cur.unlockedAchievements.map((u) => u.id))
+    const ctx: AchievementContext = {
+      world: cur.world,
+      townHalls: cur.townHalls,
+      stores: cur.stores,
+      money: cur.money,
+      sellerSales: cur.sellerSales,
+    }
+    const fresh = newlyUnlocked(ctx, unlockedIds)
+    if (fresh.length === 0) return
+    const at = Date.now()
+    set({
+      unlockedAchievements: [...cur.unlockedAchievements, ...fresh.map((d) => ({ id: d.id, at }))],
+      achievementToasts: [...cur.achievementToasts, ...fresh],
+    })
+    for (const def of fresh) notifyUnlock(def)
+    scheduleAutosave()
+  }
+
+  const {
+    camera,
+    world,
+    chunks,
+    savedAt,
+    money,
+    stores,
+    townHalls,
+    market,
+    bounties,
+    completedBounties,
+    bountiesCompletedTotal,
+    unlockedAchievements,
+  } = initState()
 
   return {
     camera,
@@ -300,6 +367,9 @@ export const useGameStore = create<GameState>((set, get) => {
     bounties,
     completedBounties,
     bountiesCompletedTotal,
+    unlockedAchievements,
+    sellerSales: new Map(),
+    achievementToasts: [],
     market,
     online: true,
     lastAway: null,
@@ -354,6 +424,8 @@ export const useGameStore = create<GameState>((set, get) => {
       bump()
       // Building counts toward any live `place` bounty for this catalog id.
       commitBounties(creditBounties(get().bounties, 'place', 1, catalogId))
+      // A placement can complete a layout achievement (e.g. a linked teleporter pair).
+      checkAchievements()
     },
 
     rotate: (cx, cy) => {
@@ -368,10 +440,12 @@ export const useGameStore = create<GameState>((set, get) => {
       if (!machine || machine.kind !== 'teleporter') return
       machine.channel = channel
       bump() // persists via autosave; re-renders panels/labels
+      // Linking a send + receive pad on one channel unlocks the Wormhole achievement.
+      checkAchievements()
     },
 
     remove: (cx, cy) => {
-      const { world: w, chunks: c, items, buffers, stores, townHalls, splitterCursors, crossovers, selected } = get()
+      const { world: w, chunks: c, items, buffers, stores, townHalls, splitterCursors, crossovers, sellerSales, selected } = get()
       const key = cellKey(cx, cy)
       if (!w.has(key)) return
       w.delete(key)
@@ -382,6 +456,8 @@ export const useGameStore = create<GameState>((set, get) => {
       stores.delete(key)
       splitterCursors.delete(key)
       crossovers.delete(key)
+      // Drop this seller's accumulated sold-item set (the machine is gone).
+      sellerSales.delete(key)
       // Deleting a town hall discards its banked villagers, which drops its
       // contribution to the global levers — so recompute them.
       if (townHalls.delete(key)) {
@@ -517,23 +593,42 @@ export const useGameStore = create<GameState>((set, get) => {
       }
       // Settle every tick (even with no progress) so real-time deadlines expire.
       commitBounties(board)
+      // Record which item each seller sold this tick (the in-memory source for
+      // co-occurrence achievements), then evaluate. Mutating the existing Map in
+      // place is fine — nothing renders off `sellerSales` directly.
+      if (nextSim.soldBySeller && nextSim.soldBySeller.size > 0) {
+        const sales = get().sellerSales
+        for (const [cell, item] of nextSim.soldBySeller) {
+          let soldSet = sales.get(cell)
+          if (!soldSet) sales.set(cell, (soldSet = new Set()))
+          soldSet.add(item)
+        }
+      }
+      // Achievements can be met by this tick's sales, a filled storage, or a
+      // freshly banked full villager set — re-check against the new state.
+      checkAchievements()
+    },
+
+    dismissAchievementToast: () => {
+      const [, ...rest] = get().achievementToasts
+      set({ achievementToasts: rest })
     },
 
     saveNow: () => {
-      const { camera: cam, world: w, money, stores, townHalls, market, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot, unlockedAchievements: ach } = get()
       const savedAtNow = Date.now()
       set({ savedAt: savedAtNow })
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
       writeSave(
-        makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot),
+        makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot, ach),
       )
     },
 
     exportSaveString: () => {
-      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot, unlockedAchievements: ach } = get()
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
       const save = makeSave(
-        cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot,
+        cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot, ach,
       )
       return JSON.stringify(save, null, 2)
     },
@@ -565,6 +660,11 @@ export const useGameStore = create<GameState>((set, get) => {
         bounties: seedDailyBounties(now),
         completedBounties: [],
         bountiesCompletedTotal: 0,
+        // Achievements are permanent recognition (Steam-style) — a world wipe
+        // keeps what you've already earned; only the session's seller tally resets.
+        unlockedAchievements: get().unlockedAchievements,
+        sellerSales: new Map(),
+        achievementToasts: [],
         transit: new Map(),
         online: true,
         lastAway: null,
