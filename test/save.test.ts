@@ -55,6 +55,23 @@ describe('save schema', () => {
     expect(parsed.market).toBeNull()
   })
 
+  it('round-trips unlocked achievements', () => {
+    const unlocked = [
+      { id: 'duck-customer', at: 111 },
+      { id: 'wormhole', at: 222 },
+    ]
+    const save = makeSave(camera, machines, 1, 0, [], null, [], [], [], 0, unlocked)
+    const parsed = parseSave(JSON.stringify(save))!
+    expect(parsed.unlockedAchievements).toEqual(unlocked)
+  })
+
+  it('defaults unlocked achievements to empty and drops malformed rows', () => {
+    const legacy = { version: 1, savedAt: 5, camera, machines }
+    expect(parseSave(JSON.stringify(legacy))!.unlockedAchievements).toEqual([])
+    const junk = { version: 1, savedAt: 5, camera, machines, unlockedAchievements: [{ nope: 1 }, 'x', { id: 'ok' }] }
+    expect(parseSave(JSON.stringify(junk))!.unlockedAchievements).toEqual([{ id: 'ok', at: 0 }])
+  })
+
   it('round-trips a teleporter pad channel label', () => {
     const tp: Machine[] = [
       { id: 't', kind: 'teleporter', catalogId: 'teleporter-in', x: 4, y: 2, dir: 'E', channel: 'coal' },
@@ -108,6 +125,28 @@ describe('migrateSave (content-change upgrade)', () => {
     expect(m.stores).toEqual([{ key: '3,0', item: 'ore', count: 5 }])
     expect(m.machines.find((x) => x.id === 'a')?.catalogId).toBe('diamond-deposit') // remapped
     expect(m.machines).toHaveLength(2) // belt kept
+  })
+
+  it('prunes unlocked achievements whose definition was removed', () => {
+    const old: GameSave = {
+      version: 3,
+      savedAt: 1,
+      camera,
+      machines,
+      money: 0,
+      stores: [],
+      townHalls: [],
+      market: null,
+      bounties: [],
+      completedBounties: [],
+      bountiesCompletedTotal: 0,
+      unlockedAchievements: [
+        { id: 'duck-customer', at: 1 }, // real → kept
+        { id: 'ghost-achievement', at: 2 }, // gone → pruned
+      ],
+    }
+    const m = migrateSave(old)
+    expect(m.unlockedAchievements).toEqual([{ id: 'duck-customer', at: 1 }])
   })
 
   it('leaves a current-version save untouched (same reference)', () => {

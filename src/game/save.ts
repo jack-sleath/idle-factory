@@ -2,7 +2,7 @@ import type { Camera } from '../render/camera'
 import type { Machine } from './types'
 import type { Market } from './market'
 import type { ActiveBounty, CompletedBounty } from './bounties'
-import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
+import { ACHIEVEMENT_META, CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 import { cellKey } from './world'
 
@@ -29,6 +29,12 @@ export interface StoredTownHall {
   counts: Record<string, number>
 }
 
+/** A permanently unlocked achievement, with the wall-clock ms it was earned. */
+export interface UnlockedAchievement {
+  id: string
+  at: number
+}
+
 export interface GameSave {
   version: number
   savedAt: number
@@ -46,6 +52,8 @@ export interface GameSave {
   completedBounties: CompletedBounty[]
   /** Lifetime count of completed bounties (survives the capped log above). */
   bountiesCompletedTotal: number
+  /** Permanently unlocked achievements, in unlock order (oldest first). */
+  unlockedAchievements: UnlockedAchievement[]
 }
 
 export function makeSave(
@@ -59,6 +67,7 @@ export function makeSave(
   bounties: ActiveBounty[] = [],
   completedBounties: CompletedBounty[] = [],
   bountiesCompletedTotal = 0,
+  unlockedAchievements: UnlockedAchievement[] = [],
 ): GameSave {
   return {
     version: config.saveVersion,
@@ -72,6 +81,7 @@ export function makeSave(
     bounties,
     completedBounties,
     bountiesCompletedTotal,
+    unlockedAchievements,
   }
 }
 
@@ -108,7 +118,20 @@ export function parseSave(raw: string): GameSave | null {
     bounties: Array.isArray(obj.bounties) ? (obj.bounties as ActiveBounty[]) : [],
     completedBounties: Array.isArray(obj.completedBounties) ? (obj.completedBounties as CompletedBounty[]) : [],
     bountiesCompletedTotal: typeof obj.bountiesCompletedTotal === 'number' ? obj.bountiesCompletedTotal : 0,
+    unlockedAchievements: parseUnlocked(obj.unlockedAchievements),
   }
+}
+
+/** Coerce a parsed value into a clean unlocked-achievement list (drops malformed rows). */
+function parseUnlocked(value: unknown): UnlockedAchievement[] {
+  if (!Array.isArray(value)) return []
+  const out: UnlockedAchievement[] = []
+  for (const row of value) {
+    if (typeof row !== 'object' || row === null) continue
+    const r = row as Record<string, unknown>
+    if (typeof r.id === 'string') out.push({ id: r.id, at: typeof r.at === 'number' ? r.at : 0 })
+  }
+  return out
 }
 
 // Catalog ids that were renamed across a content change; map old -> new so a
@@ -153,7 +176,21 @@ export function migrateSave(save: GameSave): GameSave {
       (b.objective !== 'sell' || (!!b.itemId && ITEMS_BY_ID[b.itemId] !== undefined)) &&
       (b.objective !== 'bank' || b.itemId === undefined || ITEMS_BY_ID[b.itemId] !== undefined),
   )
-  return { ...save, version: config.saveVersion, machines, stores, townHalls, market: null, bounties }
+  // Drop unlocked achievements whose definition was removed by a content change;
+  // the lifetime stats are keyed by id and harmless to keep (stale keys never
+  // match a metric), so they carry over untouched.
+  const knownAchievements = new Set(ACHIEVEMENT_META.map((a) => a.id))
+  const unlockedAchievements = (save.unlockedAchievements ?? []).filter((u) => knownAchievements.has(u.id))
+  return {
+    ...save,
+    version: config.saveVersion,
+    machines,
+    stores,
+    townHalls,
+    market: null,
+    bounties,
+    unlockedAchievements,
+  }
 }
 
 export function loadSave(): GameSave | null {

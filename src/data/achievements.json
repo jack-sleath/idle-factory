@@ -1,0 +1,282 @@
+[
+  {
+    "id": "pocket-monsters",
+    "name": "Pocket Monsters",
+    "description": "Bank one of every villager type in a single town hall. Gotta recruit 'em all.",
+    "emoji": "🧢",
+    "external": { "steam": "ACH_POCKET_MONSTERS" }
+  },
+  {
+    "id": "full-employment",
+    "name": "Full Employment",
+    "description": "Have every specialist villager — merchant, guard, innkeeper, mason, farmer and miner — working in your town.",
+    "emoji": "💼",
+    "external": { "steam": "ACH_FULL_EMPLOYMENT" }
+  },
+  {
+    "id": "duck-customer",
+    "name": "Duck Customer",
+    "description": "Sell grapes and lemonade at the same stall. \"Got any grapes?\"",
+    "emoji": "🦆",
+    "external": { "steam": "ACH_DUCK_CUSTOMER" }
+  },
+  {
+    "id": "breakfast-club",
+    "name": "Breakfast Club",
+    "description": "Sell pancakes and an omelette at the same stall. The most important meal of the day.",
+    "emoji": "🍳",
+    "external": { "steam": "ACH_BREAKFAST_CLUB" }
+  },
+  {
+    "id": "sweet-and-savoury",
+    "name": "Sweet and Savoury",
+    "description": "Sell pizza and ice cream at the same stall. No judgement here.",
+    "emoji": "🍨",
+    "external": { "steam": "ACH_SWEET_AND_SAVOURY" }
+  },
+  {
+    "id": "cornucopia",
+    "name": "Cornucopia",
+    "description": "Sell eight different kinds of goods through one stall.",
+    "emoji": "🧺",
+    "external": { "steam": "ACH_CORNUCOPIA" }
+  },
+  {
+    "id": "diamond-hands",
+    "name": "Diamond Hands",
+    "description": "Fill a storage to the brim with diamonds.",
+    "emoji": "💎",
+    "external": { "steam": "ACH_DIAMOND_HANDS" }
+  },
+  {
+    "id": "wormhole",
+    "name": "Wormhole",
+    "description": "Link a send pad and a receive pad on the same teleporter channel.",
+    "emoji": "🌀",
+    "external": { "steam": "ACH_WORMHOLE" }
+  },
+  {
+    "id": "wine-and-cheese",
+    "name": "Wine and Cheese",
+    "description": "Sell wine and cheese at the same stall. Very sophisticated.",
+    "emoji": "🍷",
+    "external": { "steam": "ACH_WINE_AND_CHEESE" }
+  },
+  {
+    "id": "ploughmans-lunch",
+    "name": "Ploughman's Lunch",
+    "description": "Sell bread and cheese at the same stall. A proper pub classic.",
+    "emoji": "🥪",
+    "external": { "steam": "ACH_PLOUGHMANS_LUNCH" }
+  },
+  {
+    "id": "jam-sandwich",
+    "name": "Jam Sandwich",
+    "description": "Sell bread and jam at the same stall.",
+    "emoji": "🍓",
+    "external": { "steam": "ACH_JAM_SANDWICH" }
+  },
+  {
+    "id": "movie-night",
+    "name": "Movie Night",
+    "description": "Sell popcorn and lemonade at the same stall. Lights, camera, snacks.",
+    "emoji": "🎬",
+    "external": { "steam": "ACH_MOVIE_NIGHT" }
+  },
+  {
+    "id": "netflix-and-chill",
+    "name": "Netflix and Chill",
+    "description": "Sell popcorn and wine at the same stall.",
+    "emoji": "📺",
+    "external": { "steam": "ACH_NETFLIX_AND_CHILL" }
+  },
+  {
+    "id": "milk-and-cookies",
+    "name": "Milk and Cookies",
+    "description": "Sell milk and cake at the same stall. Close enough to cookies.",
+    "emoji": "🍪",
+    "external": { "steam": "ACH_MILK_AND_COOKIES" }
+  },
+  {
+    "id": "bottomless-brunch",
+    "name": "Bottomless Brunch",
+    "description": "Sell pancakes and mead at the same stall.",
+    "emoji": "🥂",
+    "external": { "steam": "ACH_BOTTOMLESS_BRUNCH" }
+  },
+  {
+    "id": "just-desserts",
+    "name": "Just Desserts",
+    "description": "Sell ice cream and custard at the same stall.",
+    "emoji": "🍮",
+    "external": { "steam": "ACH_JUST_DESSERTS" }
+  },
+  {
+    "id": "bees-knees",
+    "name": "Bees Knees",
+    "description": "Sell honey and mead at the same stall — mead is made from honey, after all.",
+    "emoji": "🐝",
+    "external": { "steam": "ACH_BEES_KNEES" }
+  },
+  {
+    "id": "juice-cleanse",
+    "name": "Juice Cleanse",
+    "description": "Sell every juice — apple, grape, carrot, lemon and a smoothie — through one stall.",
+    "emoji": "🧃",
+    "external": { "steam": "ACH_JUICE_CLEANSE" }
+  },
+  {
+    "id": "five-a-day",
+    "name": "Five a Day",
+    "description": "Sell five different fruits and vegetables through one stall.",
+    "emoji": "🥗",
+    "external": { "steam": "ACH_FIVE_A_DAY" }
+  },
+  {
+    "id": "bake-off",
+    "name": "Bake Off",
+    "description": "Sell apple, strawberry and pumpkin pie through one stall.",
+    "emoji": "🥧",
+    "external": { "steam": "ACH_BAKE_OFF" }
+  },
+  {
+    "id": "sweet-tooth",
+    "name": "Sweet Tooth",
+    "description": "Sell all three sweet pies through one stall.",
+    "emoji": "🦷",
+    "external": { "steam": "ACH_SWEET_TOOTH" }
+  },
+  {
+    "id": "happy-hour",
+    "name": "Happy Hour",
+    "description": "Sell wine and mead at the same stall.",
+    "emoji": "🍻",
+    "external": { "steam": "ACH_HAPPY_HOUR" }
+  },
+  {
+    "id": "carrot-top",
+    "name": "Carrot Top",
+    "description": "Sell carrot, carrot juice and carrot cake through one stall.",
+    "emoji": "🥕",
+    "external": { "steam": "ACH_CARROT_TOP" }
+  },
+  {
+    "id": "apple-of-my-eye",
+    "name": "Apple of My Eye",
+    "description": "Sell apple, apple juice and apple pie through one stall.",
+    "emoji": "🍎",
+    "external": { "steam": "ACH_APPLE_OF_MY_EYE" }
+  },
+  {
+    "id": "life-gives-you-lemons",
+    "name": "When Life Gives You Lemons",
+    "description": "Sell lemon, lemonade and lemon juice through one stall.",
+    "emoji": "🍋",
+    "external": { "steam": "ACH_LIFE_GIVES_YOU_LEMONS" }
+  },
+  {
+    "id": "grape-expectations",
+    "name": "Grape Expectations",
+    "description": "Sell grapes, grape juice and wine through one stall.",
+    "emoji": "🍇",
+    "external": { "steam": "ACH_GRAPE_EXPECTATIONS" }
+  },
+  {
+    "id": "medieval-arsenal",
+    "name": "Medieval Arsenal",
+    "description": "Sell a sword, an axe and a bow through one stall.",
+    "emoji": "🏹",
+    "external": { "steam": "ACH_MEDIEVAL_ARSENAL" }
+  },
+  {
+    "id": "crown-jewels",
+    "name": "Crown Jewels",
+    "description": "Sell all four raw gems — sapphire, emerald, ruby and diamond — through one stall.",
+    "emoji": "👑",
+    "external": { "steam": "ACH_CROWN_JEWELS" }
+  },
+  {
+    "id": "put-a-ring-on-it",
+    "name": "Put a Ring on It",
+    "description": "Sell a gold diamond ring.",
+    "emoji": "💍",
+    "external": { "steam": "ACH_PUT_A_RING_ON_IT" }
+  },
+  {
+    "id": "nest-egg",
+    "name": "Nest Egg",
+    "description": "Fill a storage to the brim with eggs.",
+    "emoji": "🥚",
+    "external": { "steam": "ACH_NEST_EGG" }
+  },
+  {
+    "id": "making-bank",
+    "name": "Making Bank",
+    "description": "Fill a storage to the brim with gold bars.",
+    "emoji": "🏦",
+    "external": { "steam": "ACH_MAKING_BANK" }
+  },
+  {
+    "id": "cash-cow",
+    "name": "Cash Cow",
+    "description": "Fill a storage to the brim with milk.",
+    "emoji": "🐄",
+    "external": { "steam": "ACH_CASH_COW" }
+  },
+  {
+    "id": "silver-lining",
+    "name": "Silver Lining",
+    "description": "Fill a storage to the brim with silver bars.",
+    "emoji": "🥈",
+    "external": { "steam": "ACH_SILVER_LINING" }
+  },
+  {
+    "id": "old-macdonald",
+    "name": "Old MacDonald",
+    "description": "Own a cow, a sheep and a chicken at the same time. E-I-E-I-O.",
+    "emoji": "🚜",
+    "external": { "steam": "ACH_OLD_MACDONALD" }
+  },
+  {
+    "id": "green-thumb",
+    "name": "Green Thumb",
+    "description": "Own every crop spawner at once.",
+    "emoji": "🌱",
+    "external": { "steam": "ACH_GREEN_THUMB" }
+  },
+  {
+    "id": "prospector",
+    "name": "Prospector",
+    "description": "Own all six deposit mines, from silver to diamond, at the same time.",
+    "emoji": "⛏️",
+    "external": { "steam": "ACH_PROSPECTOR" }
+  },
+  {
+    "id": "orchard",
+    "name": "Orchard",
+    "description": "Own an apple orchard, a lemon tree and a grape vine at the same time.",
+    "emoji": "🌳",
+    "external": { "steam": "ACH_ORCHARD" }
+  },
+  {
+    "id": "roundabout",
+    "name": "Roundabout",
+    "description": "Build a closed loop of conveyor belts.",
+    "emoji": "🔁",
+    "external": { "steam": "ACH_ROUNDABOUT" }
+  },
+  {
+    "id": "spaghetti-junction",
+    "name": "Spaghetti Junction",
+    "description": "Place five crossovers.",
+    "emoji": "🍝",
+    "external": { "steam": "ACH_SPAGHETTI_JUNCTION" }
+  },
+  {
+    "id": "mission-control",
+    "name": "Mission Control",
+    "description": "Have five teleporter channels linked at once.",
+    "emoji": "🛰️",
+    "external": { "steam": "ACH_MISSION_CONTROL" }
+  }
+]

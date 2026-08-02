@@ -8,6 +8,8 @@ import { TownHallPanel } from './components/TownHallPanel'
 import { TeleporterPanel } from './components/TeleporterPanel'
 import { MarketPanel } from './components/MarketPanel'
 import { BountyBoard } from './components/BountyBoard'
+import { AchievementsPanel } from './components/AchievementsPanel'
+import { AchievementToast } from './components/AchievementToast'
 import { RecipeBook } from './components/RecipeBook'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
@@ -54,7 +56,7 @@ export default function App() {
   useMarketLoop()
   const money = useGameStore((s) => s.money)
   // Only one HUD panel is open at a time — opening one closes any other.
-  const [activePanel, setActivePanel] = useState<'market' | 'bounties' | 'recipe' | 'saves' | null>(null)
+  const [activePanel, setActivePanel] = useState<'market' | 'bounties' | 'achievements' | 'recipe' | 'saves' | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
 
@@ -78,9 +80,10 @@ export default function App() {
 
   // Each menu entry opens its panel (closing whichever was open), or closes it
   // if it's already the active one.
-  const menuItems: { label: string; emoji: string; id: 'market' | 'bounties' | 'recipe' | 'saves' }[] = [
+  const menuItems: { label: string; emoji: string; id: 'market' | 'bounties' | 'achievements' | 'recipe' | 'saves' }[] = [
     { label: 'Market', emoji: '📈', id: 'market' },
     { label: 'Daily Challenges', emoji: '📋', id: 'bounties' },
+    { label: 'Achievements', emoji: '🏆', id: 'achievements' },
     { label: 'Recipe Book', emoji: '📖', id: 'recipe' },
     { label: 'Saves', emoji: '💾', id: 'saves' },
   ]
@@ -144,9 +147,11 @@ export default function App() {
         <TeleporterPanel />
         {activePanel === 'market' && <MarketPanel onClose={() => setActivePanel(null)} />}
         {activePanel === 'bounties' && <BountyBoard onClose={() => setActivePanel(null)} />}
+        {activePanel === 'achievements' && <AchievementsPanel onClose={() => setActivePanel(null)} />}
         {activePanel === 'recipe' && <RecipeBook onClose={() => setActivePanel(null)} />}
         {activePanel === 'saves' && <SaveMenu onClose={() => setActivePanel(null)} />}
         <AwaySummary />
+        <AchievementToast />
         <Onboarding />
         {adminOpen && <AdminScreen onClose={() => (window.location.hash = '')} />}
       </main>

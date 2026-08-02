@@ -341,6 +341,53 @@ Gotchas:
 
 ---
 
+## Adding an achievement
+
+Achievements are **permanent, one-time recognitions for a specific, hand-authored
+feat** — not grind milestones. That distinction is deliberate: the daily bounty
+board (`src/game/bounties.ts`) already rewards ordinary play ("earn 100k", "sell
+500 bread"), so an achievement should reward doing something *particular* and
+usually playful (assembling a full set, a certain factory layout, an easter-egg
+combination — e.g. "Duck Customer": sell grapes and lemonade at one stall).
+
+By design achievements carry **no in-game reward** (no coins, no multipliers):
+they're pure status, so they can't distort the tuned income/cost economy, and
+they map cleanly onto external services (Steam etc.), which are status-only.
+
+Because each condition is bespoke *logic* (not tunable content), an achievement
+is split in two, mirroring the rest of the repo:
+
+1. **Metadata** in `src/data/achievements.json` — `id`, `name`, `description`,
+   `emoji`, and an optional `external` map (`{ "steam": "ACH_ID", … }`) that lets
+   an external provider translate the unlock to its platform id. This is content:
+   its emoji is vendored by `scripts/vendor-twemoji.mjs` and it's checked by
+   `validateData()`.
+2. **The predicate** in `src/game/achievements.ts`, under the same `id` in the
+   `CHECKS` map: `(ctx: AchievementContext) => boolean`, over live game state
+   (`world`, `townHalls`, `stores`, `money`, and `sellerSales` — the in-memory
+   set of item types each seller has sold this session). Keep it pure and cheap;
+   it runs on every relevant change. `assertAchievementsWired()` (run by
+   validation) fails the build if metadata and predicates ever drift, so a rename
+   can't leave a dangling, un-unlockable achievement.
+
+The store (`gameStore.ts`) re-checks locked achievements after placement,
+teleporter linking, and each tick; a newly-met one is banked into the persisted
+`unlockedAchievements`, queued as a toast, and handed to every registered
+provider. Only the unlock is persisted (bump `config.saveVersion` if you change
+the set); `sellerSales` is transient and re-accumulates from the tick stream.
+Add or extend a test in `test/achievements.test.ts` for the new predicate.
+
+**External services (Steam, console, mobile, analytics).** The plug point is
+`src/game/achievementProviders.ts`: implement the `AchievementProvider` interface
+and `registerAchievementProvider(...)` it at app start (`main.tsx`). Nothing in
+the store, engine, or UI knows what a provider does, so adding a service is purely
+additive. The shipped `createHostBridgeProvider('steam')` forwards unlocks to a
+`window.gameAchievements` bridge that a native shell (Electron/Tauri/Steamworks)
+injects — and is a harmless no-op on the plain web — so the web build already
+carries the seam a desktop/Steam build snaps into.
+
+---
+
 ## Emoji icons (run this after adding any new emoji)
 
 The app does **not** render live system emoji. It draws committed **Twemoji
