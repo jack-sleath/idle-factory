@@ -1,6 +1,7 @@
 import type { Machine } from './types'
 import type { StorageState, TownHallState } from './tick'
 import { ACHIEVEMENT_META, CATALOG_BY_ID, ITEMS, storageCapacity } from '../data'
+import { cellKey, dirDelta } from './world'
 
 // Achievements: permanent, one-time recognitions unlocked by hitting a SPECIFIC,
 // hand-authored condition — not a grind threshold. Where the daily bounty board
@@ -109,6 +110,51 @@ function someSellerSold(ctx: AchievementContext, items: string[]): boolean {
   return false
 }
 
+/** True if any single seller has sold at least `n` distinct items drawn from `pool`. */
+function someSellerSoldAtLeast(ctx: AchievementContext, pool: string[], n: number): boolean {
+  const set = new Set(pool)
+  for (const sold of ctx.sellerSales.values()) {
+    let count = 0
+    for (const id of sold) if (set.has(id)) count++
+    if (count >= n) return true
+  }
+  return false
+}
+
+/** True if the world contains at least one machine of every catalog id in `ids`. */
+function ownsAll(ctx: AchievementContext, ids: string[]): boolean {
+  const present = new Set<string>()
+  for (const m of ctx.world.values()) present.add(m.catalogId)
+  return ids.every((id) => present.has(id))
+}
+
+/** How many machines of a given kind are placed. */
+function countKind(ctx: AchievementContext, kind: Machine['kind']): number {
+  let n = 0
+  for (const m of ctx.world.values()) if (m.kind === kind) n++
+  return n
+}
+
+/** Raw produce (fruit/veg) item ids — the pool for "Five a Day". */
+const PRODUCE_IDS = ['apple', 'grapes', 'strawberry', 'tomato', 'pumpkin', 'lemon', 'carrot', 'potato', 'corn']
+
+/** The plant-crop spawners (not animals, water or wood) — the set for "Green Thumb". */
+const CROP_SPAWNER_IDS = [
+  'wheat-field', 'corn-field', 'potato-farm', 'tomato-plant', 'carrot-patch',
+  'pumpkin-patch', 'strawberry-patch', 'grape-vine', 'apple-orchard', 'lemon-tree', 'sugarcane-field',
+]
+
+/** The animal spawners — the set for "Old MacDonald". */
+const ANIMAL_SPAWNER_IDS = ['cow', 'sheep', 'chicken']
+
+/** The three fruit-tree/vine spawners — the set for "Orchard". */
+const ORCHARD_SPAWNER_IDS = ['apple-orchard', 'lemon-tree', 'grape-vine']
+
+/** The deposit-track mines, silver → diamond — the set for "Prospector". */
+const DEPOSIT_SPAWNER_IDS = [
+  'silver-mine', 'gold-mine', 'sapphire-deposit', 'emerald-deposit', 'ruby-deposit', 'diamond-deposit',
+]
+
 /** True if a storage cell is filled to its capacity with `item`. */
 function someStorageFullOf(ctx: AchievementContext, item: string): boolean {
   for (const [key, store] of ctx.stores) {
@@ -120,8 +166,8 @@ function someStorageFullOf(ctx: AchievementContext, item: string): boolean {
   return false
 }
 
-/** True if a send pad and a receive pad share the same non-empty channel. */
-function hasLinkedTeleporters(ctx: AchievementContext): boolean {
+/** The number of channels that have BOTH a send pad and a receive pad (i.e. are linked). */
+function linkedChannelCount(ctx: AchievementContext): number {
   const sendChannels = new Set<string>()
   const receiveChannels = new Set<string>()
   for (const m of ctx.world.values()) {
@@ -130,7 +176,42 @@ function hasLinkedTeleporters(ctx: AchievementContext): boolean {
     if (role === 'send') sendChannels.add(m.channel)
     else if (role === 'receive') receiveChannels.add(m.channel)
   }
-  for (const ch of sendChannels) if (receiveChannels.has(ch)) return true
+  let n = 0
+  for (const ch of sendChannels) if (receiveChannels.has(ch)) n++
+  return n
+}
+
+/**
+ * True if the belts form a closed loop — i.e. following belt facings, some belt's
+ * successor chain returns to a belt already on the path. Each belt has exactly one
+ * successor (the neighbour it faces, if that is also a belt), so the belt graph is
+ * functional and a cycle is found with a standard three-colour walk.
+ */
+function hasBeltLoop(ctx: AchievementContext): boolean {
+  // Belt cell → the belt cell it faces (only when the faced neighbour is a belt).
+  const succ = new Map<string, string>()
+  for (const m of ctx.world.values()) {
+    if (m.kind !== 'belt') continue
+    const { dx, dy } = dirDelta(m.dir)
+    const nk = cellKey(m.x + dx, m.y + dy)
+    const n = ctx.world.get(nk)
+    if (n && n.kind === 'belt') succ.set(cellKey(m.x, m.y), nk)
+  }
+  const IN_PATH = 1
+  const DONE = 2
+  const colour = new Map<string, number>()
+  for (const start of succ.keys()) {
+    if (colour.has(start)) continue
+    const path: string[] = []
+    let cur: string | undefined = start
+    while (cur !== undefined && !colour.has(cur) && succ.has(cur)) {
+      colour.set(cur, IN_PATH)
+      path.push(cur)
+      cur = succ.get(cur)
+    }
+    if (cur !== undefined && colour.get(cur) === IN_PATH) return true // re-entered the current path → cycle
+    for (const c of path) colour.set(c, DONE)
+  }
   return false
 }
 
@@ -154,7 +235,55 @@ export const CHECKS: Record<string, AchievementCheck> = {
     return false
   },
   'diamond-hands': (ctx) => someStorageFullOf(ctx, 'diamond'),
-  'wormhole': (ctx) => hasLinkedTeleporters(ctx),
+  'wormhole': (ctx) => linkedChannelCount(ctx) >= 1,
+
+  // Food & drink pairings sold through one stall.
+  'wine-and-cheese': (ctx) => someSellerSold(ctx, ['wine', 'cheese']),
+  'ploughmans-lunch': (ctx) => someSellerSold(ctx, ['bread', 'cheese']),
+  'jam-sandwich': (ctx) => someSellerSold(ctx, ['bread', 'jam']),
+  'movie-night': (ctx) => someSellerSold(ctx, ['popcorn', 'lemonade']),
+  'netflix-and-chill': (ctx) => someSellerSold(ctx, ['popcorn', 'wine']),
+  'milk-and-cookies': (ctx) => someSellerSold(ctx, ['milk', 'cake']),
+  'bottomless-brunch': (ctx) => someSellerSold(ctx, ['pancakes', 'mead']),
+  'just-desserts': (ctx) => someSellerSold(ctx, ['ice-cream', 'custard']),
+  'bees-knees': (ctx) => someSellerSold(ctx, ['honey', 'mead']),
+  'happy-hour': (ctx) => someSellerSold(ctx, ['wine', 'mead']),
+
+  // Themed collections through one stall.
+  'juice-cleanse': (ctx) =>
+    someSellerSold(ctx, ['apple-juice', 'grape-juice', 'carrot-juice', 'lemon-juice', 'smoothie']),
+  'five-a-day': (ctx) => someSellerSoldAtLeast(ctx, PRODUCE_IDS, 5),
+  'bake-off': (ctx) => someSellerSold(ctx, ['apple-pie', 'strawberry-pie', 'pumpkin-pie']),
+  'sweet-tooth': (ctx) =>
+    someSellerSold(ctx, ['sweet-strawberry-pie', 'sweet-apple-pie', 'sweet-pumpkin-pie']),
+
+  // One-ingredient obsessives (all products of one crop).
+  'carrot-top': (ctx) => someSellerSold(ctx, ['carrot', 'carrot-juice', 'carrot-cake']),
+  'apple-of-my-eye': (ctx) => someSellerSold(ctx, ['apple', 'apple-juice', 'apple-pie']),
+  'life-gives-you-lemons': (ctx) => someSellerSold(ctx, ['lemon', 'lemonade', 'lemon-juice']),
+  'grape-expectations': (ctx) => someSellerSold(ctx, ['grapes', 'grape-juice', 'wine']),
+
+  // Weapons & treasure.
+  'medieval-arsenal': (ctx) => someSellerSold(ctx, ['iron-sword', 'axe', 'bow']),
+  'crown-jewels': (ctx) => someSellerSold(ctx, ['sapphire', 'emerald', 'ruby', 'diamond']),
+  'put-a-ring-on-it': (ctx) => someSellerSold(ctx, ['gold-diamond-ring']),
+
+  // Storage-full puns.
+  'nest-egg': (ctx) => someStorageFullOf(ctx, 'egg'),
+  'making-bank': (ctx) => someStorageFullOf(ctx, 'gold-bar'),
+  'cash-cow': (ctx) => someStorageFullOf(ctx, 'milk'),
+  'silver-lining': (ctx) => someStorageFullOf(ctx, 'silver-bar'),
+
+  // Own-these-machines sets.
+  'old-macdonald': (ctx) => ownsAll(ctx, ANIMAL_SPAWNER_IDS),
+  'green-thumb': (ctx) => ownsAll(ctx, CROP_SPAWNER_IDS),
+  'prospector': (ctx) => ownsAll(ctx, DEPOSIT_SPAWNER_IDS),
+  'orchard': (ctx) => ownsAll(ctx, ORCHARD_SPAWNER_IDS),
+
+  // Structural / layout feats.
+  'roundabout': (ctx) => hasBeltLoop(ctx),
+  'spaghetti-junction': (ctx) => countKind(ctx, 'crossover') >= 5,
+  'mission-control': (ctx) => linkedChannelCount(ctx) >= 5,
 }
 
 /** The full achievement set: metadata joined with its predicate. */
