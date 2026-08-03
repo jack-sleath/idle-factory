@@ -3,11 +3,53 @@ import { useGameStore } from '../store/gameStore'
 import { SpriteCache } from '../render/sprites'
 import { renderScene, type RenderItem, type RenderTile } from '../render/renderer'
 import { screenToWorld, type Camera } from '../render/camera'
-import { collectVisible, parseCellKey } from '../game/world'
+import { cellKey, collectVisible, parseCellKey } from '../game/world'
+import type { Dir, Machine } from '../game/types'
 import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 
 const TAP_MOVE_THRESHOLD_PX = 8
+
+// Neighbours of a cell in the engine's fixed feed priority (N, E, S, W), paired
+// with the output direction a machine in that neighbour must face to feed this
+// cell. Mirrors `INCOMING` in `tick.ts` — used to guess where a belt item slid
+// from between two ticks so it can be animated along that path.
+const INCOMING_NB: { dx: number; dy: number; out: Dir }[] = [
+  { dx: 0, dy: -1, out: 'S' },
+  { dx: 1, dy: 0, out: 'W' },
+  { dx: 0, dy: 1, out: 'N' },
+  { dx: -1, dy: 0, out: 'E' },
+]
+
+/**
+ * Best-guess source cell an item of `type` at (x,y) arrived from this tick, or
+ * null if it was already here (blocked/stationary) or appeared from nowhere (a
+ * spawner emit, teleporter receive). Purely visual: with only two item snapshots
+ * and no per-item identity we can't be exact, so we take the highest-priority
+ * upstream neighbour that (a) held the same item type last tick and (b) faces
+ * this cell. Splitters/crossovers emit from a side that isn't simply `m.dir`, so
+ * they're accepted on adjacency alone. Matching by type keeps heterogeneous
+ * belts (bread→cheese→…) correct; a uniformly packed belt may glide even when
+ * jammed, which reads fine for an idle factory.
+ */
+function itemSource(
+  x: number,
+  y: number,
+  type: string,
+  prev: Map<string, string>,
+  world: Map<string, Machine>,
+): { sx: number; sy: number } | null {
+  for (const nb of INCOMING_NB) {
+    const nk = cellKey(x + nb.dx, y + nb.dy)
+    if (prev.get(nk) !== type) continue
+    const m = world.get(nk)
+    if (!m) continue
+    if (m.kind === 'splitter' || m.kind === 'crossover' || m.dir === nb.out) {
+      return { sx: x + nb.dx, sy: y + nb.dy }
+    }
+  }
+  return null
+}
 
 function clampZoom(zoom: number): number {
   return Math.max(config.zoomMin, Math.min(config.zoomMax, zoom))
@@ -45,6 +87,15 @@ export function GameCanvas() {
   } | null>(null)
   const sizeRef = useRef({ cssW: 0, cssH: 0 })
 
+  // Item-animation bookkeeping (refs so the render loop never reads stale state).
+  // `curItems` is the latest item snapshot we've drawn toward; when the store
+  // swaps in a new one (every tick returns a fresh map), the outgoing snapshot
+  // rolls into `prevItems` and `tickTime` restamps, so items tween from their
+  // previous cell to their new one over `tickMs`.
+  const prevItemsRef = useRef<Map<string, string>>(new Map())
+  const curItemsRef = useRef<Map<string, string>>(new Map())
+  const tickTimeRef = useRef(0)
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -56,16 +107,35 @@ export function GameCanvas() {
 
     // On-demand rendering: the scene only changes when the simulation ticks, the
     // camera/selection moves, the canvas resizes, or a sprite finishes decoding.
-    // Between those events nothing animates (items snap per tick), so redrawing
-    // every rAF frame would just re-paint an identical scene ~30× per tick. We
-    // mark `dirty` on any of those triggers and otherwise let the loop idle —
-    // this keeps a large factory from pegging the CPU/GPU at 60fps.
+    // Between those events nothing changes, so redrawing every rAF frame would
+    // just re-paint an identical scene ~30× per tick. We mark `dirty` on any of
+    // those triggers and otherwise let the loop idle — this keeps a large factory
+    // from pegging the CPU/GPU at 60fps.
+    //
+    // The exception is item animation: while items are tweening between cells we
+    // must redraw every frame for the duration of the tick. `animating` tracks
+    // whether the previous frame was mid-tween so we still paint one final settled
+    // frame when the tween ends, then fall back to idle.
     let dirty = true
+    let animating = false
     const markDirty = () => {
       dirty = true
     }
     // Any store mutation (tick, camera pan/zoom, placement, selection) → redraw.
     const unsubscribe = useGameStore.subscribe(markDirty)
+
+    // Respect the OS "reduce motion" preference: fall back to snapping (the
+    // pre-animation behaviour) and re-render once if the preference flips.
+    const motionQuery =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null
+    let reduceMotion = motionQuery?.matches ?? false
+    const onMotionChange = () => {
+      reduceMotion = motionQuery?.matches ?? false
+      markDirty()
+    }
+    motionQuery?.addEventListener?.('change', onMotionChange)
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 3)
@@ -79,16 +149,33 @@ export function GameCanvas() {
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
 
-    const loop = () => {
-      // Skip the whole draw when nothing visible changed since the last frame.
-      if (!dirty) {
+    const loop = (ts: number) => {
+      const { cssW, cssH } = sizeRef.current
+      const { camera, world, chunks, items, buffers, stores, crossovers, selected } = useGameStore.getState()
+
+      // A fresh item snapshot (every tick returns a new map) starts a new tween:
+      // the outgoing snapshot becomes the "from", the new one the "to", timed from
+      // now. Detected by identity so it also covers offline/reset/import swaps.
+      if (items !== curItemsRef.current) {
+        prevItemsRef.current = curItemsRef.current
+        curItemsRef.current = items
+        tickTimeRef.current = ts
+        dirty = true
+      }
+
+      const animEnabled = config.animateItems && !reduceMotion
+      const tRaw = config.tickMs > 0 ? (ts - tickTimeRef.current) / config.tickMs : 1
+      // Tween in progress: animation on, items present, still within the tick.
+      const animActive = animEnabled && items.size > 0 && tRaw < 1
+      // When a tween just finished, paint one last frame at the settled position.
+      const finalFrame = animating && !animActive
+      if (!dirty && !animActive && !finalFrame) {
         raf = requestAnimationFrame(loop)
         return
       }
       dirty = false
-
-      const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, buffers, stores, crossovers, selected } = useGameStore.getState()
+      animating = animActive
+      const t = animEnabled ? Math.min(1, Math.max(0, tRaw)) : 1
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
@@ -108,11 +195,25 @@ export function GameCanvas() {
       }))
 
       const itemTiles: RenderItem[] = []
+      // Belt/splitter items glide from the cell they arrived from toward their
+      // current cell across the tick; a jam or a just-appeared item stays put.
+      const tween = t < 1 && prevItemsRef.current.size > 0
+      const prevItems = prevItemsRef.current
       for (const [key, type] of items) {
         const { x, y } = parseCellKey(key)
         if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
         const emoji = ITEMS_BY_ID[type]?.emoji
-        if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
+        if (!emoji) continue
+        let cx = x
+        let cy = y
+        if (tween) {
+          const src = itemSource(x, y, type, prevItems, world)
+          if (src) {
+            cx = src.sx + (x - src.sx) * t
+            cy = src.sy + (y - src.sy) * t
+          }
+        }
+        itemTiles.push({ cx, cy, emoji })
       }
 
       // Items held inside processors/combiners ride on the machine cell so
@@ -163,6 +264,7 @@ export function GameCanvas() {
       cancelAnimationFrame(raf)
       observer.disconnect()
       unsubscribe()
+      motionQuery?.removeEventListener?.('change', onMotionChange)
     }
   }, [])
 
