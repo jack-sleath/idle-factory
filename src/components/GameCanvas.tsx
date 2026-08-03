@@ -140,20 +140,17 @@ export function GameCanvas() {
   const curItemsRef = useRef<Map<string, string>>(new Map())
   const tickTimeRef = useRef(0)
 
-  // Buffer snapshots mirroring the item ones: the previous tick's contents are
-  // needed to glide inputs onto a transforming machine as they arrive and to glide
-  // a freshly-emitted product off it onto the belt (see `itemSource`).
+  // Previous tick's buffer contents, needed to glide a freshly-emitted product off
+  // a transforming machine onto the belt (see `itemSource`). `cur` rolls into
+  // `prev` each tick, mirroring the item snapshots above.
   const prevBuffersRef = useRef<Map<string, MachineBuffer>>(new Map())
   const curBuffersRef = useRef<Map<string, MachineBuffer>>(new Map())
 
   // Production-spin bookkeeping: cell key → timestamp its current fuse-into-product
   // spin began, stamped from the store's `produced` set each tick (the
   // authoritative "this cell just transformed" signal). The held product spins for
-  // `machineSpinMs`. `intakeTime` is the last tick an input arrived into any
-  // buffer, used to keep the loop live while inputs glide in. Refs so the render
-  // loop reads live values without re-running the effect.
+  // `machineSpinMs`. A ref so the render loop reads live values without re-running.
   const spinStartRef = useRef<Map<string, number>>(new Map())
-  const intakeTimeRef = useRef(Number.NEGATIVE_INFINITY)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -210,7 +207,8 @@ export function GameCanvas() {
 
     const loop = (ts: number) => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, buffers, stores, crossovers, produced, selected } = useGameStore.getState()
+      const { camera, world, chunks, items, buffers, stores, crossovers, produced, ingested, selected } =
+        useGameStore.getState()
 
       const animItems = config.animateItems && !reduceMotion
       const animMachines = config.animateMachines && !reduceMotion
@@ -226,21 +224,10 @@ export function GameCanvas() {
         tickTimeRef.current = ts
         dirty = true
 
-        if (animMachines) {
-          // Stamp a fresh spin on every machine that produced a new output this
-          // tick. Re-stamping each tick keeps a saturated machine (transforming on
-          // every tick) spinning continuously.
-          for (const key of produced) spinStartRef.current.set(key, ts)
-          // Note whether any input just arrived into a buffer, to keep the loop
-          // live while those inputs glide onto their machine this tick.
-          for (const [key, b] of buffers) {
-            const pb = prevBuffersRef.current.get(key)
-            if (b.in.some((slot, k) => slot != null && (pb?.in[k] ?? null) == null)) {
-              intakeTimeRef.current = ts
-              break
-            }
-          }
-        }
+        // Stamp a fresh spin on every machine that produced a new output this tick.
+        // Re-stamping each tick keeps a saturated machine (transforming on every
+        // tick) spinning continuously.
+        if (animMachines) for (const key of produced) spinStartRef.current.set(key, ts)
       }
 
       const tRaw = config.tickMs > 0 ? (ts - tickTimeRef.current) / config.tickMs : 1
@@ -257,8 +244,8 @@ export function GameCanvas() {
       } else if (spinStartRef.current.size > 0) {
         spinStartRef.current.clear()
       }
-      // Inputs gliding onto machines animate over the tick after they arrived.
-      const intakeActive = animMachines && tRaw < 1 && ts - intakeTimeRef.current < config.tickMs
+      // Ingredients that arrived this tick glide onto their machine over the tick.
+      const intakeActive = animMachines && tRaw < 1 && ingested.size > 0
       const animActive = itemTween || spinActive || intakeActive
       // When the last animation just finished, paint one final settled frame.
       const finalFrame = animating && !animActive
@@ -316,34 +303,24 @@ export function GameCanvas() {
       }
 
       // Items inside a transforming machine (processor/combiner/village), animated
-      // in three phases keyed off the engine's buffer state:
-      //  1. Gathering — each filled input rests near its input edge, gliding in
-      //     from the neighbour cell on the tick it arrives.
-      //  2. Fusing — once the output forms (`produced`), the product spins and pops
-      //     in at the centre for `machineSpinMs`.
-      //  3. Leaving — handled above: the emitted product glides off onto the belt.
-      const REST = 0.24 // how far a gathering input sits toward its input edge
+      // in three phases keyed off the engine's signals. Ingredients and the product
+      // are drawn together (not either/or), so a busy machine still shows its inputs
+      // arriving while it holds/forms a product:
+      //  1. Onto — each filled input sits near its own input edge; one that arrived
+      //     this tick (`ingested`) glides in from the neighbour cell.
+      //  2. Fuse — once the output forms (`produced`), the product spins and pops in
+      //     at the centre for `machineSpinMs`.
+      //  3. Off — handled in the belt loop above: the emitted product glides off.
+      const REST = 0.26 // how far a gathering input sits toward its input edge
       for (const [key, b] of buffers) {
         const { x, y } = parseCellKey(key)
         if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
         const m = world.get(key)
         if (!m) continue
 
-        if (b.out != null) {
-          const emoji = ITEMS_BY_ID[b.out]?.emoji
-          if (!emoji) continue
-          const start = animMachines ? spinStartRef.current.get(key) : undefined
-          if (start !== undefined) {
-            const p = (ts - start) / config.machineSpinMs
-            itemTiles.push({ cx: x, cy: y, emoji, spin: spinAngle(p), scale: morphScale(p) })
-          } else {
-            itemTiles.push({ cx: x, cy: y, emoji }) // held product, waiting to emit
-          }
-          continue
-        }
-
-        // Gathering: draw each filled input near its own input edge.
+        // Ingredients approaching / resting at their input edges.
         const dirs = inputSlotDirs(m.kind, m.dir)
+        const arrived = animMachines ? ingested.get(key) : undefined
         for (let k = 0; k < b.in.length; k++) {
           const slot = b.in[k]
           if (slot == null) continue
@@ -353,15 +330,27 @@ export function GameCanvas() {
           const d = side ? dirDelta(side) : { dx: 0, dy: 0 }
           let cx = x + d.dx * REST
           let cy = y + d.dy * REST
-          // Glide in from the neighbour cell on the tick this input first appeared.
-          const justArrived = tMachine < 1 && (prevBuffers.get(key)?.in[k] ?? null) == null
-          if (justArrived && side) {
+          // Glide in from the neighbour cell on the tick this input arrived.
+          if (side && tMachine < 1 && arrived?.includes(k)) {
             const fromX = x + d.dx
             const fromY = y + d.dy
             cx = fromX + (cx - fromX) * tMachine
             cy = fromY + (cy - fromY) * tMachine
           }
           itemTiles.push({ cx, cy, emoji })
+        }
+
+        // The product held at the centre, spinning + popping during its fuse window.
+        if (b.out != null) {
+          const emoji = ITEMS_BY_ID[b.out]?.emoji
+          if (!emoji) continue
+          const start = animMachines ? spinStartRef.current.get(key) : undefined
+          if (start !== undefined) {
+            const p = (ts - start) / config.machineSpinMs
+            itemTiles.push({ cx: x, cy: y, emoji, spin: spinAngle(p), scale: morphScale(p) })
+          } else {
+            itemTiles.push({ cx: x, cy: y, emoji })
+          }
         }
       }
 

@@ -119,6 +119,15 @@ export interface SimState {
    * simulation itself never reads it back.
    */
   produced?: Set<string>
+  /**
+   * cell key → the input slot indices that received a fresh item THIS tick, for
+   * processor/combiner/village cells. Transient like `produced` (absent/empty on
+   * ticks with no intake); the store hands it to the renderer so an arriving
+   * ingredient can be animated gliding onto the machine — reliable even for a
+   * saturated machine whose slot is refilled the same tick it's consumed (a
+   * render-side null→filled diff would miss that). The simulation never reads it.
+   */
+  ingested?: Map<string, number[]>
   /** Live sale price per item id (from the market, M7); base price if absent. */
   prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
@@ -657,6 +666,13 @@ export function step(state: SimState): SimState {
   const nextSoldBySeller = new Map<string, string>()
   // Cells that formed a new output this tick (for the production-spin animation).
   const nextProduced = new Set<string>()
+  // Input slots that received a fresh item this tick (for the intake animation).
+  const nextIngested = new Map<string, number[]>()
+  const markIngest = (key: string, slot: number): void => {
+    const slots = nextIngested.get(key)
+    if (slots) slots.push(slot)
+    else nextIngested.set(key, [slot])
+  }
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink (tx,ty):
@@ -739,7 +755,13 @@ export function step(state: SimState): SimState {
         const out = consumes ? transformProcessor(b.in[0]!) : emit ? null : b.out
         let in0: string | null = consumes ? null : b.in[0]
         const feeder = backFeeder(m)
-        if (feeder && willLeaveOut(feeder, m.dir)) in0 = valueOut(feeder, m.dir) ?? in0
+        if (feeder && willLeaveOut(feeder, m.dir)) {
+          const v = valueOut(feeder, m.dir)
+          if (v !== undefined) {
+            in0 = v
+            markIngest(key, 0)
+          }
+        }
         if (in0 != null || out != null) nextBuffers.set(key, { in: [in0], out })
         break
       }
@@ -756,7 +778,13 @@ export function step(state: SimState): SimState {
         for (const slot of [0, 1] as const) {
           const feeder = combinerFeeder(m, slot)
           const inDir = OPPOSITE[inputDirs(m.dir)[slot]] // side the source emits toward
-          if (feeder && willLeaveOut(feeder, inDir)) next[slot] = valueOut(feeder, inDir) ?? next[slot]
+          if (feeder && willLeaveOut(feeder, inDir)) {
+            const v = valueOut(feeder, inDir)
+            if (v !== undefined) {
+              next[slot] = v
+              markIngest(key, slot)
+            }
+          }
         }
         if (next[0] != null || next[1] != null || out != null) {
           nextBuffers.set(key, { in: next, out })
@@ -776,7 +804,13 @@ export function step(state: SimState): SimState {
         for (const slot of [0, 1, 2] as const) {
           const feeder = villageFeeder(m, slot)
           const inDir = OPPOSITE[villageInputDirs(m.dir)[slot]] // side the source emits toward
-          if (feeder && willLeaveOut(feeder, inDir)) next[slot] = valueOut(feeder, inDir) ?? next[slot]
+          if (feeder && willLeaveOut(feeder, inDir)) {
+            const v = valueOut(feeder, inDir)
+            if (v !== undefined) {
+              next[slot] = v
+              markIngest(key, slot)
+            }
+          }
         }
         if (next.some((s) => s != null) || out != null) nextBuffers.set(key, { in: next, out })
         break
@@ -881,6 +915,7 @@ export function step(state: SimState): SimState {
     sold: nextSold,
     soldBySeller: nextSoldBySeller,
     produced: nextProduced,
+    ingested: nextIngested,
     prices,
     online,
     tick,

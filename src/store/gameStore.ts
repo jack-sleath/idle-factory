@@ -99,6 +99,12 @@ export interface GameState {
    * transform.
    */
   produced: Set<string>
+  /**
+   * cell key → input slot indices that received a fresh item on the latest tick,
+   * for processor/combiner/village machines. Transient like `produced`; read by
+   * the canvas to glide an arriving ingredient onto the machine.
+   */
+  ingested: Map<string, number[]>
   /** Active tool. */
   tool: Tool
   /** Cell currently selected via the Select tool (for panels/highlight). */
@@ -382,6 +388,7 @@ export const useGameStore = create<GameState>((set, get) => {
     lastAway: null,
     tick: 0,
     produced: new Set(),
+    ingested: new Map(),
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
     savedAt,
@@ -580,6 +587,7 @@ export const useGameStore = create<GameState>((set, get) => {
         money: nextSim.money,
         tick: nextSim.tick,
         produced: nextSim.produced ?? new Set(),
+        ingested: nextSim.ingested ?? new Map(),
       })
       if (banked) scheduleAutosave()
       // Credit bounty progress for what happened this tick, then settle. During a
