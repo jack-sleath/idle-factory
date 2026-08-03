@@ -12,12 +12,6 @@ export interface RenderTile {
   dir: Dir
   /** Optional caption drawn under the sprite (teleporter channel label). */
   label?: string
-  /**
-   * Optional rotation in radians applied to the sprite only (not the chevron, so
-   * the output side stays legible). Drives the production spin on transforming
-   * machines; omitted/0 draws upright.
-   */
-  spin?: number
 }
 
 /** An item riding a cell, drawn on top of machines. */
@@ -25,6 +19,14 @@ export interface RenderItem {
   cx: number
   cy: number
   emoji: string
+  /**
+   * Optional rotation in radians applied to the item sprite. Drives the spin as
+   * inputs fuse into a new item inside a transforming machine; omitted draws
+   * upright.
+   */
+  spin?: number
+  /** Optional uniform scale (1 = normal). Used for the small morph pop. */
+  scale?: number
 }
 
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)'
@@ -92,17 +94,7 @@ export function renderScene(
     }
 
     if (bitmap) {
-      if (t.spin) {
-        // Spin the sprite about its centre (production animation); the chevron is
-        // drawn afterwards, unrotated, so orientation stays readable.
-        ctx.save()
-        ctx.translate(sx, sy)
-        ctx.rotate(t.spin)
-        ctx.drawImage(bitmap, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
-        ctx.restore()
-      } else {
-        ctx.drawImage(bitmap, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize)
-      }
+      ctx.drawImage(bitmap, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize)
     } else {
       drawPlaceholder(ctx, sx, sy, spriteSize)
     }
@@ -129,7 +121,15 @@ export function renderScene(
       continue
     }
     const bitmap = sprites.get(it.emoji)
-    if (bitmap) {
+    if (!bitmap) continue
+    if (it.spin || (it.scale != null && it.scale !== 1)) {
+      const size = itemSize * (it.scale ?? 1)
+      ctx.save()
+      ctx.translate(sx, sy)
+      if (it.spin) ctx.rotate(it.spin)
+      ctx.drawImage(bitmap, -size / 2, -size / 2, size, size)
+      ctx.restore()
+    } else {
       ctx.drawImage(bitmap, sx - itemSize / 2, sy - itemSize / 2, itemSize, itemSize)
     }
   }

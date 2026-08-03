@@ -3,8 +3,9 @@ import { useGameStore } from '../store/gameStore'
 import { SpriteCache } from '../render/sprites'
 import { renderScene, type RenderItem, type RenderTile } from '../render/renderer'
 import { screenToWorld, type Camera } from '../render/camera'
-import { cellKey, collectVisible, parseCellKey } from '../game/world'
-import type { Dir, Machine } from '../game/types'
+import { cellKey, collectVisible, dirDelta, nextDir, parseCellKey } from '../game/world'
+import type { Dir, Machine, MachineKind } from '../game/types'
+import type { MachineBuffer } from '../game/tick'
 import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 
@@ -24,39 +25,74 @@ const INCOMING_NB: { dx: number; dy: number; out: Dir }[] = [
 /**
  * Best-guess source cell an item of `type` at (x,y) arrived from this tick, or
  * null if it was already here (blocked/stationary) or appeared from nowhere (a
- * spawner emit, teleporter receive). Purely visual: with only two item snapshots
- * and no per-item identity we can't be exact, so we take the highest-priority
- * upstream neighbour that (a) held the same item type last tick and (b) faces
- * this cell. Splitters/crossovers emit from a side that isn't simply `m.dir`, so
- * they're accepted on adjacency alone. Matching by type keeps heterogeneous
- * belts (bread→cheese→…) correct; a uniformly packed belt may glide even when
- * jammed, which reads fine for an idle factory.
+ * spawner emit, teleporter receive). Purely visual: with only two snapshots and
+ * no per-item identity we can't be exact, so we take the highest-priority upstream
+ * neighbour that faces this cell and either (a) held the same item type on a belt
+ * last tick, or (b) is a transforming machine (processor/combiner/village) whose
+ * output hold was that item last tick — so a freshly-emitted product glides out of
+ * the machine onto the belt. Splitters/crossovers emit from a side that isn't
+ * simply `m.dir`, so they match on adjacency alone. Matching by type keeps
+ * heterogeneous belts (bread→cheese→…) correct; a uniformly packed belt may glide
+ * even when jammed, which reads fine for an idle factory.
  */
 function itemSource(
   x: number,
   y: number,
   type: string,
   prev: Map<string, string>,
+  prevBuffers: Map<string, MachineBuffer>,
   world: Map<string, Machine>,
 ): { sx: number; sy: number } | null {
   for (const nb of INCOMING_NB) {
     const nk = cellKey(x + nb.dx, y + nb.dy)
-    if (prev.get(nk) !== type) continue
     const m = world.get(nk)
     if (!m) continue
-    if (m.kind === 'splitter' || m.kind === 'crossover' || m.dir === nb.out) {
+    const faces = m.kind === 'splitter' || m.kind === 'crossover' || m.dir === nb.out
+    if (!faces) continue
+    if (prev.get(nk) === type) return { sx: x + nb.dx, sy: y + nb.dy }
+    if (
+      (m.kind === 'processor' || m.kind === 'combiner' || m.kind === 'village') &&
+      prevBuffers.get(nk)?.out === type
+    ) {
       return { sx: x + nb.dx, sy: y + nb.dy }
     }
   }
   return null
 }
 
-// Machine production spin: one full turn over the spin duration, eased so it
-// launches fast and decelerates, landing back at 0 = 2π (upright) so the sprite
-// settles exactly where it started. `p` is progress in [0,1].
+const OPPOSITE: Record<Dir, Dir> = { N: 'S', S: 'N', E: 'W', W: 'E' }
+
+/**
+ * The input side each buffer slot of a transforming machine draws from, in the
+ * SAME slot order the engine uses (see `inputDirs`/`villageInputDirs` in
+ * `tick.ts`), so each gathering input animates in from the correct edge:
+ *  - processor: one slot, from directly behind (opposite its facing);
+ *  - combiner:  two slots, the two sides perpendicular to its facing;
+ *  - village:   three slots — behind, then the two perpendiculars (food/drink/bed).
+ */
+function inputSlotDirs(kind: MachineKind, dir: Dir): Dir[] {
+  if (kind === 'processor') return [OPPOSITE[dir]]
+  if (kind === 'combiner') return dir === 'E' || dir === 'W' ? ['N', 'S'] : ['E', 'W']
+  if (kind === 'village') {
+    const cw = nextDir(dir)
+    return [OPPOSITE[dir], cw, nextDir(nextDir(cw))]
+  }
+  return []
+}
+
+// Production spin applied to the item as inputs fuse into the new product: one
+// full turn over the spin duration, eased so it launches fast and decelerates,
+// landing back at 0 = 2π (upright). `p` is progress in [0,1].
 function spinAngle(p: number): number {
   const eased = 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3) // easeOutCubic
   return eased * Math.PI * 2
+}
+
+// Small "pop" as the product forms: scales up from 0.7 to 1 over the same eased
+// window, so the new item appears to burst into being rather than blink in.
+function morphScale(p: number): number {
+  const eased = 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3)
+  return 0.7 + 0.3 * eased
 }
 
 function clampZoom(zoom: number): number {
@@ -104,11 +140,20 @@ export function GameCanvas() {
   const curItemsRef = useRef<Map<string, string>>(new Map())
   const tickTimeRef = useRef(0)
 
-  // Machine-spin bookkeeping: cell key → timestamp its current production spin
-  // began. Stamped from the store's `produced` set each tick (the authoritative
-  // "this cell just transformed" signal) and rotated for `machineSpinMs`. A ref so
-  // the render loop reads live values without re-running the effect.
+  // Buffer snapshots mirroring the item ones: the previous tick's contents are
+  // needed to glide inputs onto a transforming machine as they arrive and to glide
+  // a freshly-emitted product off it onto the belt (see `itemSource`).
+  const prevBuffersRef = useRef<Map<string, MachineBuffer>>(new Map())
+  const curBuffersRef = useRef<Map<string, MachineBuffer>>(new Map())
+
+  // Production-spin bookkeeping: cell key → timestamp its current fuse-into-product
+  // spin began, stamped from the store's `produced` set each tick (the
+  // authoritative "this cell just transformed" signal). The held product spins for
+  // `machineSpinMs`. `intakeTime` is the last tick an input arrived into any
+  // buffer, used to keep the loop live while inputs glide in. Refs so the render
+  // loop reads live values without re-running the effect.
   const spinStartRef = useRef<Map<string, number>>(new Map())
+  const intakeTimeRef = useRef(Number.NEGATIVE_INFINITY)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -176,13 +221,26 @@ export function GameCanvas() {
       if (items !== curItemsRef.current) {
         prevItemsRef.current = curItemsRef.current
         curItemsRef.current = items
+        prevBuffersRef.current = curBuffersRef.current
+        curBuffersRef.current = buffers
         tickTimeRef.current = ts
         dirty = true
 
-        // Same tick boundary: stamp a fresh spin on every machine that produced a
-        // new output this tick. Re-stamping each tick keeps a saturated machine
-        // (one transforming on every tick) spinning continuously.
-        if (animMachines) for (const key of produced) spinStartRef.current.set(key, ts)
+        if (animMachines) {
+          // Stamp a fresh spin on every machine that produced a new output this
+          // tick. Re-stamping each tick keeps a saturated machine (transforming on
+          // every tick) spinning continuously.
+          for (const key of produced) spinStartRef.current.set(key, ts)
+          // Note whether any input just arrived into a buffer, to keep the loop
+          // live while those inputs glide onto their machine this tick.
+          for (const [key, b] of buffers) {
+            const pb = prevBuffersRef.current.get(key)
+            if (b.in.some((slot, k) => slot != null && (pb?.in[k] ?? null) == null)) {
+              intakeTimeRef.current = ts
+              break
+            }
+          }
+        }
       }
 
       const tRaw = config.tickMs > 0 ? (ts - tickTimeRef.current) / config.tickMs : 1
@@ -199,7 +257,9 @@ export function GameCanvas() {
       } else if (spinStartRef.current.size > 0) {
         spinStartRef.current.clear()
       }
-      const animActive = itemTween || spinActive
+      // Inputs gliding onto machines animate over the tick after they arrived.
+      const intakeActive = animMachines && tRaw < 1 && ts - intakeTimeRef.current < config.tickMs
+      const animActive = itemTween || spinActive || intakeActive
       // When the last animation just finished, paint one final settled frame.
       const finalFrame = animating && !animActive
       if (!dirty && !animActive && !finalFrame) {
@@ -209,6 +269,9 @@ export function GameCanvas() {
       dirty = false
       animating = animActive
       const t = animItems ? Math.min(1, Math.max(0, tRaw)) : 1
+      // Separate progress for machine-item animation, so it works even if belt
+      // item tweening is disabled.
+      const tMachine = animMachines ? Math.min(1, Math.max(0, tRaw)) : 1
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
@@ -218,25 +281,23 @@ export function GameCanvas() {
       const maxCx = Math.ceil(br.wx) + 1
       const maxCy = Math.ceil(br.wy) + 1
       const machines = collectVisible(world, chunks, config.chunkSize, minCx, minCy, maxCx, maxCy)
-      const tiles: RenderTile[] = machines.map((m) => {
-        // Only buffer machines (processor/combiner/village) ever get a spin start.
-        const spinStart = animMachines ? spinStartRef.current.get(cellKey(m.x, m.y)) : undefined
-        return {
-          cx: m.x,
-          cy: m.y,
-          emoji: CATALOG_BY_ID[m.catalogId]?.emoji ?? '❓',
-          kind: m.kind,
-          dir: m.dir,
-          label: m.kind === 'teleporter' ? m.channel : undefined,
-          spin: spinStart !== undefined ? spinAngle((ts - spinStart) / config.machineSpinMs) : undefined,
-        }
-      })
+      const tiles: RenderTile[] = machines.map((m) => ({
+        cx: m.x,
+        cy: m.y,
+        emoji: CATALOG_BY_ID[m.catalogId]?.emoji ?? '❓',
+        kind: m.kind,
+        dir: m.dir,
+        label: m.kind === 'teleporter' ? m.channel : undefined,
+      }))
 
       const itemTiles: RenderItem[] = []
       // Belt/splitter items glide from the cell they arrived from toward their
-      // current cell across the tick; a jam or a just-appeared item stays put.
-      const tween = t < 1 && prevItemsRef.current.size > 0
+      // current cell across the tick; a jam or a just-appeared item stays put. An
+      // item freshly emitted by a transforming machine glides off it too (the
+      // machine's output hold is the source — see `itemSource`).
+      const tween = t < 1 && (prevItemsRef.current.size > 0 || prevBuffersRef.current.size > 0)
       const prevItems = prevItemsRef.current
+      const prevBuffers = prevBuffersRef.current
       for (const [key, type] of items) {
         const { x, y } = parseCellKey(key)
         if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
@@ -245,7 +306,7 @@ export function GameCanvas() {
         let cx = x
         let cy = y
         if (tween) {
-          const src = itemSource(x, y, type, prevItems, world)
+          const src = itemSource(x, y, type, prevItems, prevBuffers, world)
           if (src) {
             cx = src.sx + (x - src.sx) * t
             cy = src.sy + (y - src.sy) * t
@@ -254,15 +315,54 @@ export function GameCanvas() {
         itemTiles.push({ cx, cy, emoji })
       }
 
-      // Items held inside processors/combiners ride on the machine cell so
-      // processing is visible: show the output hold, else the first input.
+      // Items inside a transforming machine (processor/combiner/village), animated
+      // in three phases keyed off the engine's buffer state:
+      //  1. Gathering — each filled input rests near its input edge, gliding in
+      //     from the neighbour cell on the tick it arrives.
+      //  2. Fusing — once the output forms (`produced`), the product spins and pops
+      //     in at the centre for `machineSpinMs`.
+      //  3. Leaving — handled above: the emitted product glides off onto the belt.
+      const REST = 0.24 // how far a gathering input sits toward its input edge
       for (const [key, b] of buffers) {
         const { x, y } = parseCellKey(key)
         if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
-        const held = b.out ?? b.in.find((slot) => slot != null) ?? undefined
-        if (!held) continue
-        const emoji = ITEMS_BY_ID[held]?.emoji
-        if (emoji) itemTiles.push({ cx: x, cy: y, emoji })
+        const m = world.get(key)
+        if (!m) continue
+
+        if (b.out != null) {
+          const emoji = ITEMS_BY_ID[b.out]?.emoji
+          if (!emoji) continue
+          const start = animMachines ? spinStartRef.current.get(key) : undefined
+          if (start !== undefined) {
+            const p = (ts - start) / config.machineSpinMs
+            itemTiles.push({ cx: x, cy: y, emoji, spin: spinAngle(p), scale: morphScale(p) })
+          } else {
+            itemTiles.push({ cx: x, cy: y, emoji }) // held product, waiting to emit
+          }
+          continue
+        }
+
+        // Gathering: draw each filled input near its own input edge.
+        const dirs = inputSlotDirs(m.kind, m.dir)
+        for (let k = 0; k < b.in.length; k++) {
+          const slot = b.in[k]
+          if (slot == null) continue
+          const emoji = ITEMS_BY_ID[slot]?.emoji
+          if (!emoji) continue
+          const side = dirs[k]
+          const d = side ? dirDelta(side) : { dx: 0, dy: 0 }
+          let cx = x + d.dx * REST
+          let cy = y + d.dy * REST
+          // Glide in from the neighbour cell on the tick this input first appeared.
+          const justArrived = tMachine < 1 && (prevBuffers.get(key)?.in[k] ?? null) == null
+          if (justArrived && side) {
+            const fromX = x + d.dx
+            const fromY = y + d.dy
+            cx = fromX + (cx - fromX) * tMachine
+            cy = fromY + (cy - fromY) * tMachine
+          }
+          itemTiles.push({ cx, cy, emoji })
+        }
       }
 
       // Crossovers carry two items at once (one per lane); nudge them apart so

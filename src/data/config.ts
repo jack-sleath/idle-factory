@@ -123,13 +123,14 @@ export const config = {
    */
   animateItems: true,
   /**
-   * Spin a processor/combiner/village-hut sprite through one full turn the moment
-   * it produces a new output, to punctuate the transformation. Purely cosmetic
-   * (renderer-only, driven by diffing each machine's output buffer between ticks —
-   * see `GameCanvas`) and suppressed under the OS reduced-motion preference.
+   * Animate items through a processor/combiner/village hut: inputs glide onto the
+   * machine as they arrive, the product spins and pops in as they fuse, then it
+   * glides off onto the belt. Purely cosmetic (renderer-only, driven by the tick's
+   * `produced` signal plus buffer diffs — see `GameCanvas`) and suppressed under
+   * the OS reduced-motion preference.
    */
   animateMachines: true,
-  /** Duration of the machine production spin in ms (kept under `tickMs`). */
+  /** Duration of the fuse-into-product spin in ms (kept under `tickMs`). */
   machineSpinMs: 450,
 
   /** Initial camera (world coord at viewport centre + pixels-per-cell). */
