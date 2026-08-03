@@ -111,6 +111,14 @@ export interface SimState {
    * Absent/empty on ticks with no live sale.
    */
   soldBySeller?: Map<string, string>
+  /**
+   * cell key → set membership for every processor/combiner/village cell that
+   * FORMED a new output this tick (its inputs transformed into a fresh product).
+   * Transient like `sold` (absent/empty on ticks with no transform); the store
+   * hands it to the renderer to trigger the production-spin animation. The
+   * simulation itself never reads it back.
+   */
+  produced?: Set<string>
   /** Live sale price per item id (from the market, M7); base price if absent. */
   prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
@@ -647,6 +655,8 @@ export function step(state: SimState): SimState {
   const nextSold = new Map<string, number>()
   // Per-seller item sold this tick (for co-occurrence achievements).
   const nextSoldBySeller = new Map<string, string>()
+  // Cells that formed a new output this tick (for the production-spin animation).
+  const nextProduced = new Set<string>()
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink (tx,ty):
@@ -725,6 +735,7 @@ export function step(state: SimState): SimState {
         const emit = willEmit(key)
         // Consume (transform) the input when the output slot is/will be free.
         const consumes = b.in[0] != null && (b.out == null || emit)
+        if (consumes) nextProduced.add(key)
         const out = consumes ? transformProcessor(b.in[0]!) : emit ? null : b.out
         let in0: string | null = consumes ? null : b.in[0]
         const feeder = backFeeder(m)
@@ -736,6 +747,7 @@ export function step(state: SimState): SimState {
         const b = buf(key) ?? { in: [null, null], out: null }
         const emit = willEmit(key)
         const consumes = b.in[0] != null && b.in[1] != null && (b.out == null || emit)
+        if (consumes) nextProduced.add(key)
         const out = consumes ? combine(b.in[0]!, b.in[1]!) : emit ? null : b.out
         const next: [string | null, string | null] = [
           consumes ? null : b.in[0],
@@ -758,6 +770,7 @@ export function step(state: SimState): SimState {
         const emit = willEmit(key)
         const full = b.in[0] != null && b.in[1] != null && b.in[2] != null
         const consumes = full && (b.out == null || emit)
+        if (consumes) nextProduced.add(key)
         const out = consumes ? config.villageRecipe.output : emit ? null : b.out
         const next: (string | null)[] = consumes ? [null, null, null] : [b.in[0], b.in[1], b.in[2]]
         for (const slot of [0, 1, 2] as const) {
@@ -867,6 +880,7 @@ export function step(state: SimState): SimState {
     money,
     sold: nextSold,
     soldBySeller: nextSoldBySeller,
+    produced: nextProduced,
     prices,
     online,
     tick,

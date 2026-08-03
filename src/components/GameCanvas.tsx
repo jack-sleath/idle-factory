@@ -51,6 +51,14 @@ function itemSource(
   return null
 }
 
+// Machine production spin: one full turn over the spin duration, eased so it
+// launches fast and decelerates, landing back at 0 = 2π (upright) so the sprite
+// settles exactly where it started. `p` is progress in [0,1].
+function spinAngle(p: number): number {
+  const eased = 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3) // easeOutCubic
+  return eased * Math.PI * 2
+}
+
 function clampZoom(zoom: number): number {
   return Math.max(config.zoomMin, Math.min(config.zoomMax, zoom))
 }
@@ -95,6 +103,12 @@ export function GameCanvas() {
   const prevItemsRef = useRef<Map<string, string>>(new Map())
   const curItemsRef = useRef<Map<string, string>>(new Map())
   const tickTimeRef = useRef(0)
+
+  // Machine-spin bookkeeping: cell key → timestamp its current production spin
+  // began. Stamped from the store's `produced` set each tick (the authoritative
+  // "this cell just transformed" signal) and rotated for `machineSpinMs`. A ref so
+  // the render loop reads live values without re-running the effect.
+  const spinStartRef = useRef<Map<string, number>>(new Map())
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -151,7 +165,10 @@ export function GameCanvas() {
 
     const loop = (ts: number) => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, buffers, stores, crossovers, selected } = useGameStore.getState()
+      const { camera, world, chunks, items, buffers, stores, crossovers, produced, selected } = useGameStore.getState()
+
+      const animItems = config.animateItems && !reduceMotion
+      const animMachines = config.animateMachines && !reduceMotion
 
       // A fresh item snapshot (every tick returns a new map) starts a new tween:
       // the outgoing snapshot becomes the "from", the new one the "to", timed from
@@ -161,13 +178,29 @@ export function GameCanvas() {
         curItemsRef.current = items
         tickTimeRef.current = ts
         dirty = true
+
+        // Same tick boundary: stamp a fresh spin on every machine that produced a
+        // new output this tick. Re-stamping each tick keeps a saturated machine
+        // (one transforming on every tick) spinning continuously.
+        if (animMachines) for (const key of produced) spinStartRef.current.set(key, ts)
       }
 
-      const animEnabled = config.animateItems && !reduceMotion
       const tRaw = config.tickMs > 0 ? (ts - tickTimeRef.current) / config.tickMs : 1
-      // Tween in progress: animation on, items present, still within the tick.
-      const animActive = animEnabled && items.size > 0 && tRaw < 1
-      // When a tween just finished, paint one last frame at the settled position.
+      // Item tween in progress: animation on, items present, still within the tick.
+      const itemTween = animItems && items.size > 0 && tRaw < 1
+      // Any machine still inside its spin window keeps the loop live; prune the
+      // rest so the map can't grow without bound.
+      let spinActive = false
+      if (animMachines) {
+        for (const [key, start] of spinStartRef.current) {
+          if (ts - start < config.machineSpinMs) spinActive = true
+          else spinStartRef.current.delete(key)
+        }
+      } else if (spinStartRef.current.size > 0) {
+        spinStartRef.current.clear()
+      }
+      const animActive = itemTween || spinActive
+      // When the last animation just finished, paint one final settled frame.
       const finalFrame = animating && !animActive
       if (!dirty && !animActive && !finalFrame) {
         raf = requestAnimationFrame(loop)
@@ -175,7 +208,7 @@ export function GameCanvas() {
       }
       dirty = false
       animating = animActive
-      const t = animEnabled ? Math.min(1, Math.max(0, tRaw)) : 1
+      const t = animItems ? Math.min(1, Math.max(0, tRaw)) : 1
 
       // Cull to the visible cell rectangle via the chunk index.
       const tl = screenToWorld(camera, cssW, cssH, 0, 0)
@@ -185,14 +218,19 @@ export function GameCanvas() {
       const maxCx = Math.ceil(br.wx) + 1
       const maxCy = Math.ceil(br.wy) + 1
       const machines = collectVisible(world, chunks, config.chunkSize, minCx, minCy, maxCx, maxCy)
-      const tiles: RenderTile[] = machines.map((m) => ({
-        cx: m.x,
-        cy: m.y,
-        emoji: CATALOG_BY_ID[m.catalogId]?.emoji ?? '❓',
-        kind: m.kind,
-        dir: m.dir,
-        label: m.kind === 'teleporter' ? m.channel : undefined,
-      }))
+      const tiles: RenderTile[] = machines.map((m) => {
+        // Only buffer machines (processor/combiner/village) ever get a spin start.
+        const spinStart = animMachines ? spinStartRef.current.get(cellKey(m.x, m.y)) : undefined
+        return {
+          cx: m.x,
+          cy: m.y,
+          emoji: CATALOG_BY_ID[m.catalogId]?.emoji ?? '❓',
+          kind: m.kind,
+          dir: m.dir,
+          label: m.kind === 'teleporter' ? m.channel : undefined,
+          spin: spinStart !== undefined ? spinAngle((ts - spinStart) / config.machineSpinMs) : undefined,
+        }
+      })
 
       const itemTiles: RenderItem[] = []
       // Belt/splitter items glide from the cell they arrived from toward their

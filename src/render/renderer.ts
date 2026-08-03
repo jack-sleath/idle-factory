@@ -12,6 +12,12 @@ export interface RenderTile {
   dir: Dir
   /** Optional caption drawn under the sprite (teleporter channel label). */
   label?: string
+  /**
+   * Optional rotation in radians applied to the sprite only (not the chevron, so
+   * the output side stays legible). Drives the production spin on transforming
+   * machines; omitted/0 draws upright.
+   */
+  spin?: number
 }
 
 /** An item riding a cell, drawn on top of machines. */
@@ -86,7 +92,17 @@ export function renderScene(
     }
 
     if (bitmap) {
-      ctx.drawImage(bitmap, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize)
+      if (t.spin) {
+        // Spin the sprite about its centre (production animation); the chevron is
+        // drawn afterwards, unrotated, so orientation stays readable.
+        ctx.save()
+        ctx.translate(sx, sy)
+        ctx.rotate(t.spin)
+        ctx.drawImage(bitmap, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
+        ctx.restore()
+      } else {
+        ctx.drawImage(bitmap, sx - spriteSize / 2, sy - spriteSize / 2, spriteSize, spriteSize)
+      }
     } else {
       drawPlaceholder(ctx, sx, sy, spriteSize)
     }

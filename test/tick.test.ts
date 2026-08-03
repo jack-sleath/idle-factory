@@ -325,6 +325,67 @@ describe('town hall (villager sink)', () => {
   })
 })
 
+describe('production signal (`produced`, drives the machine-spin animation)', () => {
+  const producedAt = (s: SimState, x: number, y: number) => s.produced?.has(cellKey(x, y)) ?? false
+
+  it('flags a processor only on the tick its input transforms into an output', () => {
+    // belt(ore) → processor(E) → belt.  Recipe: ore → bar.
+    const machines = worldOf(belt(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'))
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+
+    s = step(s) // ore pulled into the input slot — nothing formed yet
+    expect(producedAt(s, 1, 0)).toBe(false)
+    s = step(s) // input transforms into the held 'bar' — production!
+    expect(producedAt(s, 1, 0)).toBe(true)
+    s = step(s) // output pushed downstream; no new input to transform
+    expect(producedAt(s, 1, 0)).toBe(false)
+  })
+
+  it('flags a saturated processor on every tick it keeps transforming', () => {
+    // A processor fed by a stocked storage and drained by a seller transforms
+    // every tick — its output hold emits and refills each tick, never returning
+    // to null. This is the case a render-only "output went null → filled" guess
+    // would miss; the engine signal reports a production every tick.
+    const machines = worldOf(storage(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'), seller(3, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'ore', count: 100 }]])
+    // Prime the processor to steady state (an input queued and an output held).
+    const buffers = buffersOf([[1, 0, { in: ['ore'], out: 'bar' }]])
+    let s = mkState(machines, itemsOf([]), 0, buffers, { stores })
+    let hits = 0
+    for (let i = 0; i < 6; i++) {
+      s = step(s)
+      if (producedAt(s, 1, 0)) hits++
+    }
+    expect(hits).toBe(6) // produced on every tick, not just the first
+  })
+
+  it('does not flag a processor that is only holding a blocked output', () => {
+    // Output held with no fresh input and a jammed exit → no transform this tick.
+    const machines = worldOf(processor(0, 0, 'E'), belt(1, 0, 'E'))
+    const buffers = buffersOf([[0, 0, { in: [null], out: 'bar' }]])
+    const s = step(mkState(machines, itemsOf([[1, 0, 'ore']]), 0, buffers))
+    expect(producedAt(s, 0, 0)).toBe(false)
+  })
+
+  it('flags a combiner and a village hut on the tick they form their output', () => {
+    // Combiner: gold-ring + ruby → gold-ruby-ring (N/S inputs, E output).
+    const cw = worldOf(belt(1, 0, 'S'), belt(1, 2, 'N'), combiner(1, 1, 'E'), belt(2, 1, 'E'))
+    let cs = mkState(cw, itemsOf([[1, 0, 'gold-ring'], [1, 2, 'ruby']]), 0)
+    cs = step(cs) // inputs pulled into slots
+    expect(cs.produced?.has(cellKey(1, 1))).toBe(false)
+    cs = step(cs) // pair combines
+    expect(cs.produced?.has(cellKey(1, 1))).toBe(true)
+
+    // Village hut: food(W) + drink(S) + bed(N) → villager (E output).
+    const vw = worldOf(belt(0, 1, 'E'), belt(1, 2, 'N'), belt(1, 0, 'S'), village(1, 1, 'E'), belt(2, 1, 'E'))
+    let vs = mkState(vw, itemsOf([[0, 1, 'apple'], [1, 2, 'lemonade'], [1, 0, 'bed']]), 0)
+    vs = step(vs) // inputs pulled into slots
+    expect(vs.produced?.has(cellKey(1, 1))).toBe(false)
+    vs = step(vs) // trio combines into a villager
+    expect(vs.produced?.has(cellKey(1, 1))).toBe(true)
+  })
+})
+
 describe('storage (M5)', () => {
   it('locks onto the first item type it receives', () => {
     const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
