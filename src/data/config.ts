@@ -115,6 +115,14 @@ export const config = {
   /** Large-number formatting style (M5). */
   numberFormat: 'short' as const,
 
+  /**
+   * Smoothly tween belt items between cells over each tick instead of snapping.
+   * Purely cosmetic — the simulation is unchanged; the renderer interpolates each
+   * item's position across `tickMs` by diffing consecutive item snapshots (see
+   * `GameCanvas`). Automatically suppressed when the OS requests reduced motion.
+   */
+  animateItems: true,
+
   /** Initial camera (world coord at viewport centre + pixels-per-cell). */
   camera: { x: 1, y: 0, zoom: 72 } as Camera,
   /** Zoom clamp (pixels per cell). */
