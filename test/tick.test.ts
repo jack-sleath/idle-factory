@@ -386,6 +386,42 @@ describe('production signal (`produced`, drives the machine-spin animation)', ()
   })
 })
 
+describe('intake signal (`ingested`, drives the input-onto-machine animation)', () => {
+  const ingestedAt = (s: SimState, x: number, y: number) => s.ingested?.get(cellKey(x, y))
+
+  it('flags the processor slot on the tick an input is pulled in', () => {
+    const machines = worldOf(belt(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'))
+    let s = mkState(machines, itemsOf([[0, 0, 'ore']]), 0)
+    s = step(s) // ore pulled off the belt into the processor's slot 0
+    expect(ingestedAt(s, 1, 0)).toEqual([0])
+    s = step(s) // no new input arrives → nothing ingested
+    expect(ingestedAt(s, 1, 0)).toBeUndefined()
+  })
+
+  it('flags a saturated processor every tick, even as its slot refills instantly', () => {
+    // The render-side null→filled guess can't see this (the slot never reads
+    // empty between ticks); the engine signal reports the intake every tick.
+    const machines = worldOf(storage(0, 0, 'E'), processor(1, 0, 'E'), belt(2, 0, 'E'), seller(3, 0, 'E'))
+    const stores = storesOf([[0, 0, { item: 'ore', count: 100 }]])
+    const buffers = buffersOf([[1, 0, { in: ['ore'], out: 'bar' }]])
+    let s = mkState(machines, itemsOf([]), 0, buffers, { stores })
+    let hits = 0
+    for (let i = 0; i < 6; i++) {
+      s = step(s)
+      if (ingestedAt(s, 1, 0)?.includes(0)) hits++
+    }
+    expect(hits).toBe(6)
+  })
+
+  it('flags the correct combiner slot for the side being fed', () => {
+    // East-facing combiner: slot 0 ← N side, slot 1 ← S side (see inputDirs).
+    const w = worldOf(belt(1, 0, 'S'), belt(1, 2, 'N'), combiner(1, 1, 'E'), belt(2, 1, 'E'))
+    // Feed only the north side this tick.
+    const s = step(mkState(w, itemsOf([[1, 0, 'gold-ring']]), 0))
+    expect(s.ingested?.get(cellKey(1, 1))).toEqual([0])
+  })
+})
+
 describe('storage (M5)', () => {
   it('locks onto the first item type it receives', () => {
     const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))
