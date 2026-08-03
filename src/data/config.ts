@@ -122,6 +122,15 @@ export const config = {
    * `GameCanvas`). Automatically suppressed when the OS requests reduced motion.
    */
   animateItems: true,
+  /**
+   * Spin a processor/combiner/village-hut sprite through one full turn the moment
+   * it produces a new output, to punctuate the transformation. Purely cosmetic
+   * (renderer-only, driven by diffing each machine's output buffer between ticks —
+   * see `GameCanvas`) and suppressed under the OS reduced-motion preference.
+   */
+  animateMachines: true,
+  /** Duration of the machine production spin in ms (kept under `tickMs`). */
+  machineSpinMs: 450,
 
   /** Initial camera (world coord at viewport centre + pixels-per-cell). */
   camera: { x: 1, y: 0, zoom: 72 } as Camera,

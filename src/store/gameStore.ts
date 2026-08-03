@@ -92,6 +92,13 @@ export interface GameState {
   lastAway: AwaySummary | null
   /** Monotonic simulation tick counter. */
   tick: number
+  /**
+   * Cell keys of processor/combiner/village machines that formed a new output on
+   * the latest tick. Transient (rebuilt every tick, not persisted); read by the
+   * canvas to trigger the production-spin animation. Empty on ticks with no
+   * transform.
+   */
+  produced: Set<string>
   /** Active tool. */
   tool: Tool
   /** Cell currently selected via the Select tool (for panels/highlight). */
@@ -374,6 +381,7 @@ export const useGameStore = create<GameState>((set, get) => {
     online: true,
     lastAway: null,
     tick: 0,
+    produced: new Set(),
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
     savedAt,
@@ -571,6 +579,7 @@ export const useGameStore = create<GameState>((set, get) => {
         transit: nextSim.transit ?? new Map(),
         money: nextSim.money,
         tick: nextSim.tick,
+        produced: nextSim.produced ?? new Set(),
       })
       if (banked) scheduleAutosave()
       // Credit bounty progress for what happened this tick, then settle. During a
