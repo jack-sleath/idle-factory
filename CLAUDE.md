@@ -14,6 +14,7 @@ overwhelmingly a matter of editing JSON — you rarely touch engine code.
 - `src/data/items.json` — every item type (id, name, emoji, prices).
 - `src/data/catalog.json` — every buildable thing in the shop palette.
 - `src/data/recipes.json` — processor (1→1) and combiner (2→1) transforms.
+- `src/data/tutorials.json` — the one-time "what this machine does" cards.
 - `src/data/config.ts` — global tuning knobs (tick rate, save version, etc.).
 - `src/data/index.ts` — typed views + O(1) lookups over the three JSON files.
 - `src/game/types.ts` — the domain types (`ItemDef`, `CatalogEntry`,
@@ -388,6 +389,55 @@ carries the seam a desktop/Steam build snaps into.
 
 ---
 
+## Adding a tutorial card
+
+Tutorial cards are the game's teaching layer: **one short modal per machine
+`MachineKind`**, shown the first time the player could actually build that kind
+and then never again. There is no scripted tutorial sequence and nothing is ever
+gated — the card just meets the player at the moment the shop button lights up.
+
+Content is data, in `src/data/tutorials.json`:
+
+```json
+{
+  "id": "splitter",
+  "kind": "splitter",
+  "title": "Splitters",
+  "emoji": "🔱",
+  "tips": ["A splitter feeds its three other sides in turn, one item each."]
+}
+```
+
+- `kind` is both the subject and the trigger, so there is **exactly one card per
+  kind** and a kind no catalog entry provides is rejected (`validateData()`).
+- Order in the file is display order: a burst (the starter kit, or a windfall that
+  unlocks several kinds at once) is queued and read one card at a time.
+- A new emoji needs vendoring (see "Emoji icons" below); reusing the catalog
+  entry's own emoji is the easy path.
+
+The trigger is `newlyTriggered()` in `src/game/tutorials.ts` — a pure function
+over `{world, money, buildCostMultiplier}` plus the seen-id set. A card fires when
+its kind is **affordable** (the cheapest catalog entry of that kind at its real,
+discount-and-`costGrowth`-adjusted price) **or already placed** — the latter is
+what explains the free starter kit on a brand-new save. The store calls it after
+each placement and each tick, queues cards in `tutorials`, and banks the id into
+the persisted `seenTutorials` when the player dismisses one (so a reload mid-card
+re-shows it). It early-outs once every card has been seen, which is the steady
+state within a few minutes of play.
+
+Notes:
+- `seenTutorials` is persisted, so **bump `config.saveVersion`** when you change
+  the card set. `migrateSave()` drops ids for removed cards, and treats a save
+  predating a card as having seen it if that kind is already placed — an
+  established factory is never told what its own conveyors do.
+- `resetGame()` clears `seenTutorials` (a fresh start replays the teaching),
+  unlike achievements, which are permanent status.
+- The card renders in `src/components/TutorialPopup.tsx`; the first-run
+  "how to play" card (`Onboarding.tsx`) shows ahead of it so the two never stack.
+- Cover a new card's trigger in `test/tutorials.test.ts`.
+
+---
+
 ## Emoji icons (run this after adding any new emoji)
 
 The app does **not** render live system emoji. It draws committed **Twemoji
@@ -449,6 +499,7 @@ Run `npm run test`. Engine behaviour is covered headlessly (no browser):
 - `test/save.test.ts` — parse/migrate round-trips.
 - `test/data.test.ts` — content integrity: asserts `validateData()` finds no
   broken item references (see the recipe section above).
+- `test/tutorials.test.ts` — which tutorial card fires, and when.
 - `test/market.test.ts`, `test/offline.test.ts`, `test/economy.test.ts`,
   `test/scaling.test.ts`, `test/store.test.ts` — the rest.
 

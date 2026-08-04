@@ -27,6 +27,15 @@ describe('save schema', () => {
     expect(parsed!.machines).toEqual(machines)
   })
 
+  it('round-trips the dismissed tutorial cards', () => {
+    const save = makeSave(camera, machines, 1, 0, [], null, [], [], [], 0, [], ['spawner', 'belt'])
+    const parsed = parseSave(JSON.stringify(save))!
+    expect(parsed.seenTutorials).toEqual(['spawner', 'belt'])
+    // A save with no tutorial field at all (or a malformed one) reads as none seen.
+    expect(parseSave(JSON.stringify({ ...save, seenTutorials: undefined }))!.seenTutorials).toEqual([])
+    expect(parseSave(JSON.stringify({ ...save, seenTutorials: [1, 'belt'] }))!.seenTutorials).toEqual(['belt'])
+  })
+
   it('round-trips money and storage contents', () => {
     const stores = [{ key: '2,0', item: 'ore', count: 42 }]
     const save = makeSave(camera, machines, 1, 1234.5, stores)
@@ -147,6 +156,46 @@ describe('migrateSave (content-change upgrade)', () => {
     }
     const m = migrateSave(old)
     expect(m.unlockedAchievements).toEqual([{ id: 'duck-customer', at: 1 }])
+  })
+
+  it('treats a save predating tutorials as having seen the cards for what it already builds', () => {
+    const old: GameSave = {
+      version: 16,
+      savedAt: 1,
+      camera,
+      machines, // a spawner and a belt: those two cards are already redundant
+      money: 0,
+      stores: [],
+      townHalls: [],
+      market: null,
+      bounties: [],
+      completedBounties: [],
+      bountiesCompletedTotal: 0,
+      unlockedAchievements: [],
+      seenTutorials: [],
+    }
+    const m = migrateSave(old)
+    expect(m.seenTutorials).toEqual(['spawner', 'belt'])
+  })
+
+  it('prunes seen-tutorial ids whose card was removed', () => {
+    const old: GameSave = {
+      version: 16,
+      savedAt: 1,
+      camera,
+      machines,
+      money: 0,
+      stores: [],
+      townHalls: [],
+      market: null,
+      bounties: [],
+      completedBounties: [],
+      bountiesCompletedTotal: 0,
+      unlockedAchievements: [],
+      seenTutorials: ['seller', 'ghost-tutorial'],
+    }
+    // The ghost id is dropped; what the factory already builds is added.
+    expect(migrateSave(old).seenTutorials).toEqual(['seller', 'spawner', 'belt'])
   })
 
   it('leaves a current-version save untouched (same reference)', () => {

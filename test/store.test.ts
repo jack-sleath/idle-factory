@@ -4,7 +4,7 @@ import { loadSave } from '../src/game/save'
 import { seedMarket } from '../src/game/market'
 import { cellKey } from '../src/game/world'
 import { config } from '../src/data/config'
-import { CATALOG_BY_ID } from '../src/data'
+import { CATALOG_BY_ID, TUTORIALS } from '../src/data'
 import { effectiveCost } from '../src/game/economy'
 import { IDENTITY_TOWN_MODIFIERS } from '../src/game/town'
 import { dayStart, nextDayStart } from '../src/game/bounties'
@@ -28,6 +28,10 @@ function resetToEmptyWorld() {
     bountiesCompletedTotal: 0,
     online: true,
     lastAway: null,
+    // Marking every tutorial card seen neutralizes them for the pre-existing tests
+    // (a seen card never re-queues); the tutorial tests below set their own.
+    seenTutorials: TUTORIALS.map((t) => t.id),
+    tutorials: [],
     savedAt: 0,
     selected: null,
     worldRev: 0,
@@ -565,5 +569,73 @@ describe('achievements (store integration)', () => {
     expect(useGameStore.getState().achievementToasts.map((d) => d.id)).toEqual(['wormhole'])
     useGameStore.getState().dismissAchievementToast()
     expect(useGameStore.getState().achievementToasts).toHaveLength(0)
+  })
+})
+
+describe('tutorial cards (store integration)', () => {
+  beforeEach(() => {
+    resetToEmptyWorld()
+    useGameStore.setState({ seenTutorials: [], tutorials: [] })
+  })
+
+  it('queues a card when a placement puts its kind on the board', () => {
+    useGameStore.setState({ money: effectiveCost(CATALOG_BY_ID['seller-basic'], 0) })
+    useGameStore.getState().place(0, 0, 'seller-basic')
+    // The free-rebuild basics cost nothing in an empty world, so those cards are
+    // pending too; the seller's own card lands behind them, in data order.
+    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual([
+      'spawner',
+      'belt',
+      'storage',
+      'seller',
+    ])
+  })
+
+  it('queues cards on a tick as income makes new kinds affordable', () => {
+    useGameStore.setState({ money: effectiveCost(CATALOG_BY_ID['processor-basic'], 0) })
+    useGameStore.getState().advanceTick()
+    const queued = useGameStore.getState().tutorials.map((t) => t.id)
+    expect(queued).toContain('processor')
+    expect(queued).not.toContain('townhall') // still far too expensive
+    // Ticking again must not enqueue the same cards a second time.
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual(queued)
+  })
+
+  it('dismissing banks the card as seen, persists it, and never shows it again', () => {
+    // Start with the free basics already taught, so the seller is the only card due.
+    const basics = ['spawner', 'belt', 'storage']
+    useGameStore.setState({
+      seenTutorials: basics,
+      money: effectiveCost(CATALOG_BY_ID['seller-basic'], 0),
+    })
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual(['seller'])
+
+    useGameStore.getState().dismissTutorial()
+    const after = useGameStore.getState()
+    expect(after.tutorials).toHaveLength(0)
+    expect(after.seenTutorials).toEqual([...basics, 'seller'])
+
+    after.saveNow()
+    expect(loadSave()!.seenTutorials).toEqual([...basics, 'seller'])
+    // Same money, same world, another tick: the card stays dismissed.
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorials).toHaveLength(0)
+  })
+
+  it('dismissTutorial on an empty queue is a no-op', () => {
+    useGameStore.getState().dismissTutorial()
+    expect(useGameStore.getState().seenTutorials).toEqual([])
+  })
+
+  it('resetGame replays the tutorial, keeping achievements', () => {
+    useGameStore.setState({ seenTutorials: TUTORIALS.map((t) => t.id) })
+    useGameStore.getState().resetGame()
+    expect(useGameStore.getState().seenTutorials).toEqual([])
+    expect(useGameStore.getState().tutorials).toHaveLength(0)
+    // The starter kit's own kinds queue up again on the next tick.
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual(['spawner', 'belt', 'storage'])
   })
 })

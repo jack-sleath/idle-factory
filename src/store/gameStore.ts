@@ -10,7 +10,7 @@ import {
   nextDir,
   type ChunkIndex,
 } from '../game/world'
-import { CATALOG_BY_ID } from '../data'
+import { CATALOG_BY_ID, TUTORIALS } from '../data'
 import { countPlaced, effectiveCost } from '../game/economy'
 import { config } from '../data/config'
 import {
@@ -27,6 +27,7 @@ import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type 
 import { computeOffline, type AwaySummary } from '../game/offline'
 import { computeTownModifiers, sumVillagers, type TownModifiers } from '../game/town'
 import { newlyUnlocked, type AchievementContext, type AchievementDef } from '../game/achievements'
+import { newlyTriggered, type TutorialDef } from '../game/tutorials'
 import { notifyUnlock } from '../game/achievementProviders'
 import {
   creditBounties,
@@ -84,6 +85,10 @@ export interface GameState {
   sellerSales: Map<string, Set<string>>
   /** Queue of just-unlocked achievements awaiting a toast (FIFO; drained by the UI). */
   achievementToasts: AchievementDef[]
+  /** Ids of tutorial cards already dismissed (persisted; each card shows once). */
+  seenTutorials: string[]
+  /** Queue of triggered tutorial cards awaiting display (FIFO; drained by the UI). */
+  tutorials: TutorialDef[]
   /** Stock-market state: prices, last-10 histories, and last update time. */
   market: Market
   /** Whether live selling is active (false only during offline sampling). */
@@ -136,6 +141,8 @@ export interface GameState {
   advanceTick: () => void
   /** Drop the oldest queued achievement toast once the UI has shown it. */
   dismissAchievementToast: () => void
+  /** Close the front tutorial card, banking it as seen so it never shows again. */
+  dismissTutorial: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
   saveNow: () => void
   /** Serialize the current game to a pretty-printed JSON save string (M8). */
@@ -191,6 +198,7 @@ interface InitState {
   completedBounties: CompletedBounty[]
   bountiesCompletedTotal: number
   unlockedAchievements: UnlockedAchievement[]
+  seenTutorials: string[]
 }
 
 function initState(): InitState {
@@ -221,6 +229,7 @@ function initState(): InitState {
       completedBounties: saved.completedBounties ?? [],
       bountiesCompletedTotal: saved.bountiesCompletedTotal ?? 0,
       unlockedAchievements: saved.unlockedAchievements ?? [],
+      seenTutorials: saved.seenTutorials ?? [],
     }
   }
   const world = worldFromMachines(seedStarterKit())
@@ -237,6 +246,7 @@ function initState(): InitState {
     completedBounties: [],
     bountiesCompletedTotal: 0,
     unlockedAchievements: [],
+    seenTutorials: [],
   }
 }
 
@@ -291,6 +301,8 @@ export const useGameStore = create<GameState>((set, get) => {
       unlockedAchievements: save.unlockedAchievements ?? [],
       sellerSales: new Map(), // in-memory only; re-accumulates from the tick stream
       achievementToasts: [], // a load never re-toasts already-earned achievements
+      seenTutorials: save.seenTutorials ?? [],
+      tutorials: [], // the loaded state re-triggers whatever it still owes on the next tick
       savedAt: save.savedAt,
       selected: null,
       worldRev: get().worldRev + 1,
@@ -349,6 +361,25 @@ export const useGameStore = create<GameState>((set, get) => {
     scheduleAutosave()
   }
 
+  // Queue any tutorial card the player has just become able to act on (see
+  // `game/tutorials.ts`): a card fires the first time its machine kind is
+  // affordable — or is already standing, which is what explains the free starter
+  // kit on a fresh game. Cards are only banked as seen when the player dismisses
+  // them (`dismissTutorial`), so a reload mid-card shows it again; already-queued
+  // ids are excluded here so a card can't be enqueued twice. Called after
+  // placement and every tick, and it early-outs once every card has been seen.
+  const checkTutorials = () => {
+    const cur = get()
+    if (cur.seenTutorials.length >= TUTORIALS.length) return
+    const shown = new Set([...cur.seenTutorials, ...cur.tutorials.map((t) => t.id)])
+    const fresh = newlyTriggered(
+      { world: cur.world, money: cur.money, buildCostMultiplier: cur.townModifiers.buildCostMultiplier },
+      shown,
+    )
+    if (fresh.length === 0) return
+    set({ tutorials: [...cur.tutorials, ...fresh] })
+  }
+
   const {
     camera,
     world,
@@ -362,6 +393,7 @@ export const useGameStore = create<GameState>((set, get) => {
     completedBounties,
     bountiesCompletedTotal,
     unlockedAchievements,
+    seenTutorials,
   } = initState()
 
   return {
@@ -383,6 +415,8 @@ export const useGameStore = create<GameState>((set, get) => {
     unlockedAchievements,
     sellerSales: new Map(),
     achievementToasts: [],
+    seenTutorials,
+    tutorials: [],
     market,
     online: true,
     lastAway: null,
@@ -441,6 +475,9 @@ export const useGameStore = create<GameState>((set, get) => {
       commitBounties(creditBounties(get().bounties, 'place', 1, catalogId))
       // A placement can complete a layout achievement (e.g. a linked teleporter pair).
       checkAchievements()
+      // A first-of-its-kind build (or a free one) should be explained the moment
+      // it lands rather than on the next tick, so re-check the tutorials here too.
+      checkTutorials()
     },
 
     rotate: (cx, cy) => {
@@ -624,6 +661,8 @@ export const useGameStore = create<GameState>((set, get) => {
       // Achievements can be met by this tick's sales, a filled storage, or a
       // freshly banked full villager set — re-check against the new state.
       checkAchievements()
+      // Income is what unlocks tutorial cards, and income arrives tick by tick.
+      checkTutorials()
     },
 
     dismissAchievementToast: () => {
@@ -631,21 +670,28 @@ export const useGameStore = create<GameState>((set, get) => {
       set({ achievementToasts: rest })
     },
 
+    dismissTutorial: () => {
+      const [shown, ...rest] = get().tutorials
+      if (!shown) return
+      set({ tutorials: rest, seenTutorials: [...get().seenTutorials, shown.id] })
+      scheduleAutosave()
+    },
+
     saveNow: () => {
-      const { camera: cam, world: w, money, stores, townHalls, market, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot, unlockedAchievements: ach } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot, unlockedAchievements: ach, seenTutorials: tut } = get()
       const savedAtNow = Date.now()
       set({ savedAt: savedAtNow })
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
       writeSave(
-        makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot, ach),
+        makeSave(cam, [...w.values()], savedAtNow, money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot, ach, tut),
       )
     },
 
     exportSaveString: () => {
-      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot, unlockedAchievements: ach } = get()
+      const { camera: cam, world: w, money, stores, townHalls, market, savedAt: at, bounties: bnt, completedBounties: cbnt, bountiesCompletedTotal: ctot, unlockedAchievements: ach, seenTutorials: tut } = get()
       const storeList = [...stores.entries()].map(([key, s]) => ({ key, item: s.item, count: s.count }))
       const save = makeSave(
-        cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot, ach,
+        cam, [...w.values()], at || Date.now(), money, storeList, market, townHallList(townHalls), bnt, cbnt, ctot, ach, tut,
       )
       return JSON.stringify(save, null, 2)
     },
@@ -682,6 +728,10 @@ export const useGameStore = create<GameState>((set, get) => {
         unlockedAchievements: get().unlockedAchievements,
         sellerSales: new Map(),
         achievementToasts: [],
+        // A wipe is a fresh start, so the teaching starts over too (unlike
+        // achievements, tutorial cards are guidance rather than earned status).
+        seenTutorials: [],
+        tutorials: [],
         transit: new Map(),
         online: true,
         lastAway: null,

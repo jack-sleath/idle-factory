@@ -13,7 +13,8 @@ import { AchievementToast } from './components/AchievementToast'
 import { RecipeBook } from './components/RecipeBook'
 import { SaveMenu } from './components/SaveMenu'
 import { AwaySummary } from './components/AwaySummary'
-import { Onboarding } from './components/Onboarding'
+import { Onboarding, alreadyOnboarded } from './components/Onboarding'
+import { TutorialPopup } from './components/TutorialPopup'
 import { AdminScreen } from './components/AdminScreen'
 import { useGameLoop } from './hooks/useGameLoop'
 import { useMarketLoop } from './hooks/useMarketLoop'
@@ -59,6 +60,9 @@ export default function App() {
   const [activePanel, setActivePanel] = useState<'market' | 'bounties' | 'achievements' | 'recipe' | 'saves' | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const adminOpen = useHash() === '#admin'
+  // The machine tutorial cards queue up from the first tick, but they wait behind
+  // the how-to-play card on a brand-new game so the two don't stack.
+  const [introDone, setIntroDone] = useState(alreadyOnboarded)
 
   // Close the HUD menu on an outside tap or Escape (only while it's open).
   const menuRef = useRef<HTMLDivElement>(null)
@@ -152,7 +156,8 @@ export default function App() {
         {activePanel === 'saves' && <SaveMenu onClose={() => setActivePanel(null)} />}
         <AwaySummary />
         <AchievementToast />
-        <Onboarding />
+        <Onboarding onDismiss={() => setIntroDone(true)} />
+        {introDone && <TutorialPopup />}
         {adminOpen && <AdminScreen onClose={() => (window.location.hash = '')} />}
       </main>
       <Palette />

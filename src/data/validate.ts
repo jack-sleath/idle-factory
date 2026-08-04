@@ -1,4 +1,4 @@
-import { ACHIEVEMENT_META, BOUNTY_TEMPLATES, CATALOG, ITEMS, ITEMS_BY_ID, RECIPES } from './index'
+import { ACHIEVEMENT_META, BOUNTY_TEMPLATES, CATALOG, ITEMS, ITEMS_BY_ID, RECIPES, TUTORIALS } from './index'
 import { ITEM_CATEGORIES } from '../game/types'
 import { assertAchievementsWired } from '../game/achievements'
 import { config } from './config'
@@ -29,6 +29,7 @@ export function validateData(): string[] {
   dupes(CATALOG.map((c) => c.id), 'catalog')
   dupes(BOUNTY_TEMPLATES.map((b) => b.id), 'bounty')
   dupes(ACHIEVEMENT_META.map((a) => a.id), 'achievement')
+  dupes(TUTORIALS.map((t) => t.id), 'tutorial')
 
   // Every item must carry a known category (used to group the market/shop UI).
   const categories = new Set<string>(ITEM_CATEGORIES)
@@ -144,6 +145,25 @@ export function validateData(): string[] {
     }
   }
   errors.push(...assertAchievementsWired())
+
+  // Tutorials: one card per machine kind, fired the first time that kind is
+  // affordable (see `game/tutorials.ts`). A card for a kind nothing in the
+  // catalog provides could never trigger, and two cards for one kind would both
+  // fire at once — reject both.
+  const kindsSeen = new Set<string>()
+  const catalogKinds = new Set(CATALOG.map((c) => c.kind))
+  for (const t of TUTORIALS) {
+    if (!t.title) errors.push(`tutorial "${t.id}" has no title`)
+    if (!t.emoji) errors.push(`tutorial "${t.id}" has no emoji`)
+    if (!Array.isArray(t.tips) || t.tips.length === 0 || t.tips.some((tip) => !tip)) {
+      errors.push(`tutorial "${t.id}" needs a non-empty tips list of non-empty strings`)
+    }
+    if (!catalogKinds.has(t.kind)) {
+      errors.push(`tutorial "${t.id}" targets kind "${t.kind}", which no catalog entry provides`)
+    }
+    if (kindsSeen.has(t.kind)) errors.push(`tutorial "${t.id}" duplicates kind "${t.kind}"`)
+    kindsSeen.add(t.kind)
+  }
 
   // Cross-check the lookup index was built over the same item set (guards against
   // an ITEMS_BY_ID that drifts from ITEMS).

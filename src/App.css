@@ -1369,6 +1369,28 @@
   line-height: 1.35;
 }
 
+/* One-time tutorial card for a machine kind (see game/tutorials.ts). Reuses the
+   how-to-play card's backdrop and bullet list, just a touch wider for its tips. */
+.panel--tutorial {
+  width: min(340px, 100%);
+}
+
+.tutorial__badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(120, 200, 255, 0.16);
+  border: 1px solid rgba(120, 200, 255, 0.35);
+  opacity: 0.9;
+}
+
+.tutorial__list {
+  margin-bottom: 14px;
+}
+
 /* Roomier tap targets on touch devices for comfortable one-handed play. */
 @media (pointer: coarse) {
   .palette__btn {

@@ -2,7 +2,8 @@ import { useState } from 'react'
 
 const ONBOARDED_KEY = 'idle-factory/onboarded'
 
-function alreadyOnboarded(): boolean {
+/** Whether the how-to-play card has already been dismissed on this device. */
+export function alreadyOnboarded(): boolean {
   try {
     return localStorage.getItem(ONBOARDED_KEY) === '1'
   } catch {
@@ -10,11 +11,17 @@ function alreadyOnboarded(): boolean {
   }
 }
 
+interface OnboardingProps {
+  /** Called once the card is dismissed, so the caller can start the machine tutorials. */
+  onDismiss?: () => void
+}
+
 /**
  * A one-time "how to play" card shown on first run and dismissed for good via a
- * localStorage flag. Deliberately tiny — the full HUD hint stays visible after.
+ * localStorage flag. Deliberately tiny — the full HUD hint stays visible after,
+ * and the per-machine tutorial cards (`TutorialPopup`) take over from here.
  */
-export function Onboarding() {
+export function Onboarding({ onDismiss }: OnboardingProps) {
   const [dismissed, setDismissed] = useState(alreadyOnboarded)
   if (dismissed) return null
 
@@ -25,6 +32,7 @@ export function Onboarding() {
       // Ignore storage failures; the card just reappears next load.
     }
     setDismissed(true)
+    onDismiss?.()
   }
 
   return (

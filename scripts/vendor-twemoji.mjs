@@ -49,6 +49,7 @@ const items = JSON.parse(fs.readFileSync(path.join(dataDir, 'items.json'), 'utf8
 const catalog = JSON.parse(fs.readFileSync(path.join(dataDir, 'catalog.json'), 'utf8'))
 const bounties = JSON.parse(fs.readFileSync(path.join(dataDir, 'bounties.json'), 'utf8'))
 const achievements = JSON.parse(fs.readFileSync(path.join(dataDir, 'achievements.json'), 'utf8'))
+const tutorials = JSON.parse(fs.readFileSync(path.join(dataDir, 'tutorials.json'), 'utf8'))
 
 const UI_CHROME = [
   '🏭', '🔍', '🔄', '❌', '📈', '💾', '❓', '📖',
@@ -66,6 +67,7 @@ const EMOJI = [
     ...catalog.map((c) => c.emoji),
     ...bounties.map((b) => b.emoji),
     ...achievements.map((a) => a.emoji),
+    ...tutorials.map((t) => t.emoji),
     ...UI_CHROME,
   ]),
 ]
