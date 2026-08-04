@@ -110,6 +110,12 @@ export interface GameState {
    * the canvas to glide an arriving ingredient onto the machine.
    */
   ingested: Map<string, number[]>
+  /**
+   * dest cell key → source cell key for belt/splitter items that actually moved on
+   * the latest tick. Transient like `produced`; read by the canvas to glide only
+   * genuine moves (a blocked/held item is absent, so a jammed line stays still).
+   */
+  moved: Map<string, string>
   /** Active tool. */
   tool: Tool
   /** Cell currently selected via the Select tool (for panels/highlight). */
@@ -422,6 +428,7 @@ export const useGameStore = create<GameState>((set, get) => {
     tick: 0,
     produced: new Set(),
     ingested: new Map(),
+    moved: new Map(),
     tool: { kind: 'build', catalogId: 'belt-basic' },
     selected: null,
     savedAt,
@@ -624,6 +631,7 @@ export const useGameStore = create<GameState>((set, get) => {
         tick: nextSim.tick,
         produced: nextSim.produced ?? new Set(),
         ingested: nextSim.ingested ?? new Map(),
+        moved: nextSim.moved ?? new Map(),
       })
       if (banked) scheduleAutosave()
       // Credit bounty progress for what happened this tick, then settle. During a

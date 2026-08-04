@@ -426,6 +426,54 @@ describe('intake signal (`ingested`, drives the input-onto-machine animation)', 
   })
 })
 
+describe('move signal (`moved`, drives the belt glide — and only for real moves)', () => {
+  it('records dest→source for an item that advances a cell', () => {
+    const machines = worldOf(belt(0, 0, 'E'), belt(1, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'ore']]), 0))
+    expect(itemAt(s, 1, 0)).toBe('ore') // moved
+    expect(s.moved?.get(cellKey(1, 0))).toBe(cellKey(0, 0))
+    expect(s.moved?.size).toBe(1)
+  })
+
+  it('records NOTHING for a fully jammed belt (the bug: blocked items still glided)', () => {
+    // 2,0 points into empty space → the packed run is stuck; nothing moves.
+    const machines = worldOf(belt(0, 0, 'E'), belt(1, 0, 'E'), belt(2, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'a'], [1, 0, 'b'], [2, 0, 'c']]), 0))
+    expect(itemAt(s, 0, 0)).toBe('a') // all held in place
+    expect(itemAt(s, 1, 0)).toBe('b')
+    expect(itemAt(s, 2, 0)).toBe('c')
+    expect(s.moved?.size).toBe(0) // ← nothing moved, so nothing animates
+  })
+
+  it('advances only the head when a packed run partly clears', () => {
+    // Adding a free belt at 3,0 lets the whole run shift one cell as a unit.
+    const machines = worldOf(belt(0, 0, 'E'), belt(1, 0, 'E'), belt(2, 0, 'E'), belt(3, 0, 'E'))
+    const s = step(mkState(machines, itemsOf([[0, 0, 'a'], [1, 0, 'b'], [2, 0, 'c']]), 0))
+    expect(s.moved?.get(cellKey(1, 0))).toBe(cellKey(0, 0))
+    expect(s.moved?.get(cellKey(2, 0))).toBe(cellKey(1, 0))
+    expect(s.moved?.get(cellKey(3, 0))).toBe(cellKey(2, 0))
+    expect(s.moved?.size).toBe(3)
+  })
+
+  it('records a machine→belt hand-off so the product glides off the machine', () => {
+    const machines = worldOf(processor(0, 0, 'E'), belt(1, 0, 'E'))
+    const buffers = buffersOf([[0, 0, { in: [null], out: 'bar' }]])
+    const s = step(mkState(machines, itemsOf([]), 0, buffers))
+    expect(itemAt(s, 1, 0)).toBe('bar') // emitted onto the belt
+    expect(s.moved?.get(cellKey(1, 0))).toBe(cellKey(0, 0)) // source is the machine cell
+  })
+
+  it('does not record a machine whose output is blocked (jammed downstream)', () => {
+    // Output belt already holds an item with nowhere to go → the bar can't leave.
+    const machines = worldOf(processor(0, 0, 'E'), belt(1, 0, 'E'))
+    const buffers = buffersOf([[0, 0, { in: [null], out: 'bar' }]])
+    const s = step(mkState(machines, itemsOf([[1, 0, 'ore']]), 0, buffers))
+    expect(bufAt(s, 0, 0)?.out).toBe('bar') // still held
+    expect(itemAt(s, 1, 0)).toBe('ore') // belt item stuck
+    expect(s.moved?.size).toBe(0) // nothing glides
+  })
+})
+
 describe('storage (M5)', () => {
   it('locks onto the first item type it receives', () => {
     const machines = worldOf(belt(0, 0, 'E'), storage(1, 0, 'E'))

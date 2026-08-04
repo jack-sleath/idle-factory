@@ -128,6 +128,15 @@ export interface SimState {
    * render-side null→filled diff would miss that). The simulation never reads it.
    */
   ingested?: Map<string, number[]>
+  /**
+   * dest cell key → source cell key, for every belt/splitter cell whose item
+   * actually MOVED in this tick (from a neighbour belt, a spawner, or a machine's
+   * emitted output). A held/back-pressured item is absent — so the renderer can
+   * glide only genuine moves and leave a jammed line static, instead of guessing
+   * from same-type neighbours (which made packed/blocked belts animate in place).
+   * Transient like `produced`; the simulation never reads it back.
+   */
+  moved?: Map<string, string>
   /** Live sale price per item id (from the market, M7); base price if absent. */
   prices: Record<string, number>
   /** Whether live selling is active. Offline (M9) sellers buffer instead. */
@@ -673,6 +682,8 @@ export function step(state: SimState): SimState {
     if (slots) slots.push(slot)
     else nextIngested.set(key, [slot])
   }
+  // dest cell key → source cell key for items that actually moved (for animation).
+  const nextMoved = new Map<string, string>()
   let money = state.money
 
   // The item (if any) that will actually arrive into single-input sink (tx,ty):
@@ -686,6 +697,19 @@ export function step(state: SimState): SimState {
     return undefined
   }
 
+  // The source cell an item arrives FROM into (tx,ty) this tick, or null if none
+  // actually leaves toward it. Mirrors `arrivingItem`'s neighbour selection exactly
+  // (same priority, same first-offering-neighbour decides), so its key pairs with
+  // that value — used to record `nextMoved` for the glide animation.
+  const arrivingSource = (tx: number, ty: number): string | null => {
+    for (const nb of INCOMING) {
+      const key = cellKey(tx + nb.dx, ty + nb.dy)
+      if (!readyOut(key, nb.out)) continue
+      return willLeaveOut(key, nb.out) ? key : null
+    }
+    return null
+  }
+
   for (const m of machines.values()) {
     const key = cellKey(m.x, m.y)
     switch (m.kind) {
@@ -693,7 +717,11 @@ export function step(state: SimState): SimState {
         // Keep a held item; a belt that clears may receive a fresh one.
         let value = items.has(key) && !willEmit(key) ? items.get(key) : undefined
         const incoming = arrivingItem(m.x, m.y)
-        if (incoming !== undefined) value = incoming
+        if (incoming !== undefined) {
+          value = incoming
+          const from = arrivingSource(m.x, m.y)
+          if (from) nextMoved.set(key, from) // this item genuinely moved in
+        }
         if (value !== undefined) nextItems.set(key, value)
         break
       }
@@ -704,7 +732,13 @@ export function step(state: SimState): SimState {
         // one from behind this same tick (matching the belt hand-off).
         let value = items.has(key) && !emits ? items.get(key) : undefined
         const feeder = backFeeder(m)
-        if (feeder && willLeaveOut(feeder, m.dir)) value = valueOut(feeder, m.dir) ?? value
+        if (feeder && willLeaveOut(feeder, m.dir)) {
+          const v = valueOut(feeder, m.dir)
+          if (v !== undefined) {
+            value = v
+            nextMoved.set(key, feeder) // pulled in from behind → genuine move
+          }
+        }
         if (value !== undefined) nextItems.set(key, value)
         // Advance the cursor past the side just used so the next item prefers a
         // different side; otherwise carry the current cursor forward unchanged.
@@ -916,6 +950,7 @@ export function step(state: SimState): SimState {
     soldBySeller: nextSoldBySeller,
     produced: nextProduced,
     ingested: nextIngested,
+    moved: nextMoved,
     prices,
     online,
     tick,
