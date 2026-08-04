@@ -3,62 +3,12 @@ import { useGameStore } from '../store/gameStore'
 import { SpriteCache } from '../render/sprites'
 import { renderScene, type RenderItem, type RenderTile } from '../render/renderer'
 import { screenToWorld, type Camera } from '../render/camera'
-import { cellKey, collectVisible, dirDelta, nextDir, parseCellKey } from '../game/world'
-import type { Dir, Machine, MachineKind } from '../game/types'
-import type { MachineBuffer } from '../game/tick'
+import { collectVisible, dirDelta, nextDir, parseCellKey } from '../game/world'
+import type { Dir, MachineKind } from '../game/types'
 import { CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
 import { config } from '../data/config'
 
 const TAP_MOVE_THRESHOLD_PX = 8
-
-// Neighbours of a cell in the engine's fixed feed priority (N, E, S, W), paired
-// with the output direction a machine in that neighbour must face to feed this
-// cell. Mirrors `INCOMING` in `tick.ts` — used to guess where a belt item slid
-// from between two ticks so it can be animated along that path.
-const INCOMING_NB: { dx: number; dy: number; out: Dir }[] = [
-  { dx: 0, dy: -1, out: 'S' },
-  { dx: 1, dy: 0, out: 'W' },
-  { dx: 0, dy: 1, out: 'N' },
-  { dx: -1, dy: 0, out: 'E' },
-]
-
-/**
- * Best-guess source cell an item of `type` at (x,y) arrived from this tick, or
- * null if it was already here (blocked/stationary) or appeared from nowhere (a
- * spawner emit, teleporter receive). Purely visual: with only two snapshots and
- * no per-item identity we can't be exact, so we take the highest-priority upstream
- * neighbour that faces this cell and either (a) held the same item type on a belt
- * last tick, or (b) is a transforming machine (processor/combiner/village) whose
- * output hold was that item last tick — so a freshly-emitted product glides out of
- * the machine onto the belt. Splitters/crossovers emit from a side that isn't
- * simply `m.dir`, so they match on adjacency alone. Matching by type keeps
- * heterogeneous belts (bread→cheese→…) correct; a uniformly packed belt may glide
- * even when jammed, which reads fine for an idle factory.
- */
-function itemSource(
-  x: number,
-  y: number,
-  type: string,
-  prev: Map<string, string>,
-  prevBuffers: Map<string, MachineBuffer>,
-  world: Map<string, Machine>,
-): { sx: number; sy: number } | null {
-  for (const nb of INCOMING_NB) {
-    const nk = cellKey(x + nb.dx, y + nb.dy)
-    const m = world.get(nk)
-    if (!m) continue
-    const faces = m.kind === 'splitter' || m.kind === 'crossover' || m.dir === nb.out
-    if (!faces) continue
-    if (prev.get(nk) === type) return { sx: x + nb.dx, sy: y + nb.dy }
-    if (
-      (m.kind === 'processor' || m.kind === 'combiner' || m.kind === 'village') &&
-      prevBuffers.get(nk)?.out === type
-    ) {
-      return { sx: x + nb.dx, sy: y + nb.dy }
-    }
-  }
-  return null
-}
 
 const OPPOSITE: Record<Dir, Dir> = { N: 'S', S: 'N', E: 'W', W: 'E' }
 
@@ -132,19 +82,11 @@ export function GameCanvas() {
   const sizeRef = useRef({ cssW: 0, cssH: 0 })
 
   // Item-animation bookkeeping (refs so the render loop never reads stale state).
-  // `curItems` is the latest item snapshot we've drawn toward; when the store
-  // swaps in a new one (every tick returns a fresh map), the outgoing snapshot
-  // rolls into `prevItems` and `tickTime` restamps, so items tween from their
-  // previous cell to their new one over `tickMs`.
-  const prevItemsRef = useRef<Map<string, string>>(new Map())
+  // `curItems` is the item map we last drew toward; when the store swaps in a new
+  // one (every tick returns a fresh map) we restamp `tickTime`, and items glide
+  // over `tickMs` from the source cell the engine reports in `moved`.
   const curItemsRef = useRef<Map<string, string>>(new Map())
   const tickTimeRef = useRef(0)
-
-  // Previous tick's buffer contents, needed to glide a freshly-emitted product off
-  // a transforming machine onto the belt (see `itemSource`). `cur` rolls into
-  // `prev` each tick, mirroring the item snapshots above.
-  const prevBuffersRef = useRef<Map<string, MachineBuffer>>(new Map())
-  const curBuffersRef = useRef<Map<string, MachineBuffer>>(new Map())
 
   // Production-spin bookkeeping: cell key → timestamp its current fuse-into-product
   // spin began, stamped from the store's `produced` set each tick (the
@@ -207,20 +149,16 @@ export function GameCanvas() {
 
     const loop = (ts: number) => {
       const { cssW, cssH } = sizeRef.current
-      const { camera, world, chunks, items, buffers, stores, crossovers, produced, ingested, selected } =
+      const { camera, world, chunks, items, buffers, stores, crossovers, produced, ingested, moved, selected } =
         useGameStore.getState()
 
       const animItems = config.animateItems && !reduceMotion
       const animMachines = config.animateMachines && !reduceMotion
 
-      // A fresh item snapshot (every tick returns a new map) starts a new tween:
-      // the outgoing snapshot becomes the "from", the new one the "to", timed from
-      // now. Detected by identity so it also covers offline/reset/import swaps.
+      // A fresh item map (every tick returns a new one) starts a new glide window,
+      // timed from now. Detected by identity so it also covers offline/reset/import.
       if (items !== curItemsRef.current) {
-        prevItemsRef.current = curItemsRef.current
         curItemsRef.current = items
-        prevBuffersRef.current = curBuffersRef.current
-        curBuffersRef.current = buffers
         tickTimeRef.current = ts
         dirty = true
 
@@ -231,8 +169,10 @@ export function GameCanvas() {
       }
 
       const tRaw = config.tickMs > 0 ? (ts - tickTimeRef.current) / config.tickMs : 1
-      // Item tween in progress: animation on, items present, still within the tick.
-      const itemTween = animItems && items.size > 0 && tRaw < 1
+      // Item glide in progress: something actually moved this tick and we're still
+      // within it. Gating on `moved` (not merely "items exist") lets a fully jammed
+      // factory settle to idle instead of repainting a static scene every frame.
+      const itemTween = animItems && moved.size > 0 && tRaw < 1
       // Any machine still inside its spin window keeps the loop live; prune the
       // rest so the map can't grow without bound.
       let spinActive = false
@@ -278,13 +218,12 @@ export function GameCanvas() {
       }))
 
       const itemTiles: RenderItem[] = []
-      // Belt/splitter items glide from the cell they arrived from toward their
-      // current cell across the tick; a jam or a just-appeared item stays put. An
-      // item freshly emitted by a transforming machine glides off it too (the
-      // machine's output hold is the source — see `itemSource`).
-      const tween = t < 1 && (prevItemsRef.current.size > 0 || prevBuffersRef.current.size > 0)
-      const prevItems = prevItemsRef.current
-      const prevBuffers = prevBuffersRef.current
+      // Belt/splitter items: an item the engine reports as MOVED this tick glides
+      // from its source cell to here; one that's absent from `moved` stayed put
+      // (back-pressure / jam) and is drawn static — no more treadmill on a blocked
+      // line. A move whose source is a machine cell reads as the product gliding off
+      // that machine onto the belt.
+      const glide = t < 1 && moved.size > 0
       for (const [key, type] of items) {
         const { x, y } = parseCellKey(key)
         if (x < minCx || x > maxCx || y < minCy || y > maxCy) continue
@@ -292,12 +231,11 @@ export function GameCanvas() {
         if (!emoji) continue
         let cx = x
         let cy = y
-        if (tween) {
-          const src = itemSource(x, y, type, prevItems, prevBuffers, world)
-          if (src) {
-            cx = src.sx + (x - src.sx) * t
-            cy = src.sy + (y - src.sy) * t
-          }
+        const from = glide ? moved.get(key) : undefined
+        if (from) {
+          const s = parseCellKey(from)
+          cx = s.x + (x - s.x) * t
+          cy = s.y + (y - s.y) * t
         }
         itemTiles.push({ cx, cy, emoji })
       }
