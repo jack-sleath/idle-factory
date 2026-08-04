@@ -1,0 +1,102 @@
+[
+  {
+    "id": "spawner",
+    "kind": "spawner",
+    "gate": "machine",
+    "title": "Spawners",
+    "emoji": "⛏️",
+    "tips": [
+      "A spawner is a source: it pops out one item every few ticks, from the side its arrow points to.",
+      "Your Ore Gatherer is already running — everything you build starts as ore from here.",
+      "Each extra copy of the same spawner costs more than the last, so widen your line before you double up."
+    ]
+  },
+  {
+    "id": "belt",
+    "kind": "belt",
+    "gate": "machine",
+    "title": "Conveyors",
+    "emoji": "➡️",
+    "tips": [
+      "A conveyor holds one item and shifts it one cell per tick, in the direction it faces.",
+      "Pick Rotate and tap a belt to turn it; chain them to route around anything.",
+      "If the far end is blocked the whole line jams and holds its items — nothing is ever lost."
+    ]
+  },
+  {
+    "id": "processor",
+    "kind": "processor",
+    "gate": "machine",
+    "title": "Processors",
+    "emoji": "⚙️",
+    "tips": [
+      "A processor turns one item into another: ore into a bar, wheat into bread.",
+      "It pulls input from directly behind it and pushes the result out of the front.",
+      "Chain them — ore → bar → ring is just two processors in a row, and a ring sells for far more than ore.",
+      "No recipe for what arrives? You get worthless junk, so check the Recipe Book first."
+    ]
+  },
+  {
+    "id": "storage",
+    "kind": "storage",
+    "gate": "machine",
+    "title": "Storage",
+    "emoji": "📦",
+    "tips": [
+      "Storage stockpiles one item type — whatever arrives first locks it in until the crate is empty.",
+      "Pick Select and tap it to Sell All at the live market price; that also frees it for a new type.",
+      "It feeds the side it faces too, so it doubles as a buffer between two machines."
+    ]
+  },
+  {
+    "id": "seller",
+    "kind": "seller",
+    "gate": "machine",
+    "title": "Sellers",
+    "emoji": "💰",
+    "tips": [
+      "A seller instantly sells anything that reaches it, at the current market price. No tapping needed.",
+      "Sellers keep earning while you are away (up to 24 hours) — a storage just fills up and waits.",
+      "Prices drift, so check the Market panel to see what your line is actually worth right now."
+    ]
+  },
+  {
+    "id": "combiner",
+    "kind": "combiner",
+    "gate": "combiner-recipe",
+    "title": "Combiners",
+    "emoji": "🔀",
+    "tips": [
+      "A combiner fuses two items into one: a stick plus a bar makes an axe worth more than either.",
+      "That means two production lines — a second spawner feeding one side, your ore feeding the other.",
+      "Feed the two sides either side of its output arrow; which input goes where does not matter.",
+      "Both slots must be full before it produces, so keep the two lines evenly fed."
+    ]
+  },
+  {
+    "id": "village",
+    "kind": "village",
+    "gate": "villager-inputs",
+    "title": "Village Huts",
+    "emoji": "🏘️",
+    "tips": [
+      "A Village Hut turns a food, a drink and a bed into a villager — three lines into one.",
+      "Its inputs are fixed: food from behind, then the drink and the bed on its two flanks.",
+      "Each side accepts only its own ingredient, so if a line refuses to feed, swap the two flank lines.",
+      "Beds are planks plus wool, and water counts as a drink — no mines needed for any of it."
+    ]
+  },
+  {
+    "id": "townhall",
+    "kind": "townhall",
+    "gate": "machine",
+    "title": "Town Halls",
+    "emoji": "🏛️",
+    "tips": [
+      "A Town Hall banks villagers for good: route them in and they buff the whole factory.",
+      "Pick Select and tap the hall to see its population and exactly what it is boosting.",
+      "Specialists are the real prize — combine a villager with a ring, sword, bed, planks, wheat or ore.",
+      "Villagers only bank while you are playing; offline time never adds to the population."
+    ]
+  }
+]

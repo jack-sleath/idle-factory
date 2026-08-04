@@ -2,9 +2,10 @@ import type { Camera } from '../render/camera'
 import type { Machine } from './types'
 import type { Market } from './market'
 import type { ActiveBounty, CompletedBounty } from './bounties'
-import { ACHIEVEMENT_META, CATALOG_BY_ID, ITEMS_BY_ID } from '../data'
+import { ACHIEVEMENT_META, CATALOG_BY_ID, ITEMS_BY_ID, TUTORIALS } from '../data'
 import { config } from '../data/config'
 import { cellKey } from './world'
+import { tutorialsForPlacedKinds } from './tutorials'
 
 // Versioned save schema + localStorage read/write. v1 (M2) held layout + camera;
 // v2 (M5) added the bank balance and per-storage contents; v3 (M7) added market
@@ -54,6 +55,8 @@ export interface GameSave {
   bountiesCompletedTotal: number
   /** Permanently unlocked achievements, in unlock order (oldest first). */
   unlockedAchievements: UnlockedAchievement[]
+  /** Ids of one-time tutorial cards the player has already dismissed. */
+  seenTutorials: string[]
 }
 
 export function makeSave(
@@ -68,6 +71,7 @@ export function makeSave(
   completedBounties: CompletedBounty[] = [],
   bountiesCompletedTotal = 0,
   unlockedAchievements: UnlockedAchievement[] = [],
+  seenTutorials: string[] = [],
 ): GameSave {
   return {
     version: config.saveVersion,
@@ -82,6 +86,7 @@ export function makeSave(
     completedBounties,
     bountiesCompletedTotal,
     unlockedAchievements,
+    seenTutorials,
   }
 }
 
@@ -119,6 +124,9 @@ export function parseSave(raw: string): GameSave | null {
     completedBounties: Array.isArray(obj.completedBounties) ? (obj.completedBounties as CompletedBounty[]) : [],
     bountiesCompletedTotal: typeof obj.bountiesCompletedTotal === 'number' ? obj.bountiesCompletedTotal : 0,
     unlockedAchievements: parseUnlocked(obj.unlockedAchievements),
+    seenTutorials: Array.isArray(obj.seenTutorials)
+      ? (obj.seenTutorials as unknown[]).filter((id): id is string => typeof id === 'string')
+      : [],
   }
 }
 
@@ -181,6 +189,17 @@ export function migrateSave(save: GameSave): GameSave {
   // match a metric), so they carry over untouched.
   const knownAchievements = new Set(ACHIEVEMENT_META.map((a) => a.id))
   const unlockedAchievements = (save.unlockedAchievements ?? []).filter((u) => knownAchievements.has(u.id))
+  // Tutorial cards (v17): drop ids whose card no longer exists, and treat a save
+  // that predates them as having "seen" the cards for every kind it already
+  // builds — an established factory shouldn't be told what its own conveyors do.
+  // Kinds the player hasn't reached yet still get their card when they can afford one.
+  const knownTutorials = new Set(TUTORIALS.map((t) => t.id))
+  const seenTutorials = [
+    ...new Set([
+      ...(save.seenTutorials ?? []).filter((id) => knownTutorials.has(id)),
+      ...(save.version < 17 ? tutorialsForPlacedKinds(machines) : []),
+    ]),
+  ]
   return {
     ...save,
     version: config.saveVersion,
@@ -190,6 +209,7 @@ export function migrateSave(save: GameSave): GameSave {
     market: null,
     bounties,
     unlockedAchievements,
+    seenTutorials,
   }
 }
 

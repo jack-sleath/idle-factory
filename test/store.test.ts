@@ -4,10 +4,13 @@ import { loadSave } from '../src/game/save'
 import { seedMarket } from '../src/game/market'
 import { cellKey } from '../src/game/world'
 import { config } from '../src/data/config'
-import { CATALOG_BY_ID } from '../src/data'
+import { CATALOG_BY_ID, TUTORIALS, basePrice } from '../src/data'
 import { effectiveCost } from '../src/game/economy'
 import { IDENTITY_TOWN_MODIFIERS } from '../src/game/town'
 import { dayStart, nextDayStart } from '../src/game/bounties'
+
+/** The diamond's catalogued value — read from data so a reprice can't break these. */
+const DIAMOND = basePrice('diamond')
 
 function resetToEmptyWorld() {
   localStorage.clear()
@@ -28,6 +31,10 @@ function resetToEmptyWorld() {
     bountiesCompletedTotal: 0,
     online: true,
     lastAway: null,
+    // Marking every tutorial card seen neutralizes them for the pre-existing tests
+    // (a seen card never re-queues); the tutorial tests below set their own.
+    seenTutorials: TUTORIALS.map((t) => t.id),
+    tutorial: null,
     savedAt: 0,
     selected: null,
     worldRev: 0,
@@ -92,7 +99,8 @@ describe('placement / rotate / delete', () => {
 describe('town hall (store wiring)', () => {
   beforeEach(() => {
     resetToEmptyWorld()
-    useGameStore.setState({ money: 100_000 }) // afford the town hall
+    // Afford the town hall (a deliberate mid-game goal, so priced accordingly).
+    useGameStore.setState({ money: CATALOG_BY_ID['town-hall'].cost * 2 })
   })
 
   const feed = (villagerId: string) => {
@@ -148,12 +156,12 @@ describe('bounty board (store wiring)', () => {
     useGameStore.setState({ bounties: [bounty({ objective: 'earn', target: 50, reward: 500 })] })
     const store = useGameStore.getState()
     store.place(3, 0, 'storage-basic')
-    // 2 diamonds at base price 50 → 100 proceeds, clearing the target of 50.
+    // 2 diamonds at base price → proceeds well clear of the target of 50.
     useGameStore.setState({ stores: new Map([[cellKey(3, 0), { item: 'diamond', count: 2 }]]) })
 
     store.sellAll(3, 0)
     const s = useGameStore.getState()
-    expect(s.money).toBe(100 + 500) // sale proceeds + challenge reward
+    expect(s.money).toBe(2 * DIAMOND + 500) // sale proceeds + challenge reward
     expect(s.bountiesCompletedTotal).toBe(1)
     expect(s.completedBounties[0].reward).toBe(500)
     // The completed challenge stays on the board marked done until the daily
@@ -198,7 +206,7 @@ describe('bounty board (store wiring)', () => {
   it('credits a bank bounty when its villager is delivered to a town hall', () => {
     useGameStore.setState({
       bounties: [bounty({ objective: 'bank', itemId: 'merchant', target: 1, reward: 400 })],
-      money: 100_000,
+      money: CATALOG_BY_ID['town-hall'].cost * 2,
     })
     const store = useGameStore.getState()
     store.place(0, 0, 'belt-basic')
@@ -264,11 +272,11 @@ describe('sell all (M5)', () => {
   it('banks a storage stockpile at base price and empties it', () => {
     const store = useGameStore.getState()
     store.place(3, 0, 'storage-basic')
-    // Seed the storage with 2 diamonds (base price 50 each → 100).
+    // Seed the storage with 2 diamonds; Sell-All banks both at base price.
     useGameStore.setState({ stores: new Map([[cellKey(3, 0), { item: 'diamond', count: 2 }]]) })
 
     useGameStore.getState().sellAll(3, 0)
-    expect(useGameStore.getState().money).toBe(100)
+    expect(useGameStore.getState().money).toBe(2 * DIAMOND)
     expect(useGameStore.getState().stores.get(cellKey(3, 0))).toBeUndefined()
   })
 
@@ -565,5 +573,81 @@ describe('achievements (store integration)', () => {
     expect(useGameStore.getState().achievementToasts.map((d) => d.id)).toEqual(['wormhole'])
     useGameStore.getState().dismissAchievementToast()
     expect(useGameStore.getState().achievementToasts).toHaveLength(0)
+  })
+})
+
+describe('tutorial cards (store integration)', () => {
+  beforeEach(() => {
+    resetToEmptyWorld()
+    // A real save always has the starter kit, and the sequence starts from it.
+    const kit = seedStarterKit()
+    useGameStore.setState({
+      world: new Map(kit.map((m) => [cellKey(m.x, m.y), m])),
+      seenTutorials: [],
+      tutorial: null,
+    })
+  })
+
+  it('opens the sequence on a tick, one card at a time', () => {
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial?.id).toBe('spawner')
+  })
+
+  it('hands over the next card the moment one is dismissed', () => {
+    useGameStore.getState().advanceTick()
+    useGameStore.getState().dismissTutorial()
+    // The conveyor card is already due (the kit has one), so no blank frame.
+    expect(useGameStore.getState().tutorial?.id).toBe('belt')
+    useGameStore.getState().dismissTutorial()
+    // The processor card waits on money, so the run stops here.
+    expect(useGameStore.getState().tutorial).toBeNull()
+  })
+
+  it('releases the next card once the player earns enough', () => {
+    useGameStore.setState({ seenTutorials: ['spawner', 'belt'] })
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial).toBeNull() // broke
+    useGameStore.setState({ money: effectiveCost(CATALOG_BY_ID['processor-basic'], 0) })
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial?.id).toBe('processor')
+  })
+
+  it('releases the next card once the player builds what it taught', () => {
+    useGameStore.setState({ seenTutorials: ['spawner', 'belt', 'processor'], money: 1000 })
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial).toBeNull() // no processor built yet
+    useGameStore.getState().place(0, 5, 'processor-basic')
+    expect(useGameStore.getState().tutorial?.id).toBe('storage')
+  })
+
+  it('dismissing banks the card as seen, persists it, and never shows it again', () => {
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial?.id).toBe('spawner')
+
+    useGameStore.getState().dismissTutorial()
+    expect(useGameStore.getState().seenTutorials).toEqual(['spawner'])
+    useGameStore.getState().saveNow()
+    expect(loadSave()!.seenTutorials).toEqual(['spawner'])
+
+    // Clear the follow-up card and confirm neither comes back.
+    useGameStore.getState().dismissTutorial()
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial).toBeNull()
+    expect(useGameStore.getState().seenTutorials).toEqual(['spawner', 'belt'])
+  })
+
+  it('dismissTutorial with no card showing is a no-op', () => {
+    useGameStore.setState({ seenTutorials: TUTORIALS.map((t) => t.id) })
+    useGameStore.getState().dismissTutorial()
+    expect(useGameStore.getState().seenTutorials).toHaveLength(TUTORIALS.length)
+  })
+
+  it('resetGame replays the tutorial, keeping achievements', () => {
+    useGameStore.setState({ seenTutorials: TUTORIALS.map((t) => t.id) })
+    useGameStore.getState().resetGame()
+    expect(useGameStore.getState().seenTutorials).toEqual([])
+    expect(useGameStore.getState().tutorial).toBeNull()
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial?.id).toBe('spawner')
   })
 })

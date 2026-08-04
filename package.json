@@ -13,7 +13,8 @@
     "simulate": "vite-node scripts/simulate.ts",
     "preview": "vite preview",
     "vendor:twemoji": "node scripts/vendor-twemoji.mjs",
-    "gen:icons": "node scripts/gen-icons.mjs"
+    "gen:icons": "node scripts/gen-icons.mjs",
+    "ladder": "vite-node scripts/ladder.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

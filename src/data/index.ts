@@ -1,11 +1,13 @@
 import type { CatalogEntry, ItemDef, Recipes } from '../game/types'
 import type { BountyTemplate } from '../game/bounties'
 import type { AchievementMeta } from '../game/achievements'
+import type { TutorialDef } from '../game/tutorials'
 import itemsRaw from './items.json'
 import catalogRaw from './catalog.json'
 import recipesRaw from './recipes.json'
 import bountiesRaw from './bounties.json'
 import achievementsRaw from './achievements.json'
+import tutorialsRaw from './tutorials.json'
 
 // Typed views over the JSON data files. The `as` assertions narrow the JSON's
 // widened `string` fields to our union types (Dir, MachineKind).
@@ -16,6 +18,8 @@ export const RECIPES = recipesRaw as Recipes
 export const BOUNTY_TEMPLATES = bountiesRaw as BountyTemplate[]
 /** Permanent achievement metadata (name/blurb/emoji/external ids); predicates live in game/achievements.ts. */
 export const ACHIEVEMENT_META = achievementsRaw as AchievementMeta[]
+/** One-time tutorial cards, in display order; trigger logic lives in game/tutorials.ts. */
+export const TUTORIALS = tutorialsRaw as TutorialDef[]
 
 export const ITEMS_BY_ID: Record<string, ItemDef> = Object.fromEntries(
   ITEMS.map((item) => [item.id, item]),

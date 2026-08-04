@@ -3,6 +3,10 @@ import { step, type CrossoverState, type MachineBuffer, type SimState, type Stor
 import { cellKey } from '../src/game/world'
 import type { Dir, Machine, MachineKind } from '../src/game/types'
 import { config } from '../src/data/config'
+import { basePrice } from '../src/data'
+
+/** The diamond's catalogued value — read from data so a reprice can't break these. */
+const DIAMOND = basePrice('diamond')
 
 function machine(kind: MachineKind, x: number, y: number, dir: Dir, catalogId: string): Machine {
   return { id: `${x},${y}`, kind, catalogId, x, y, dir }
@@ -524,7 +528,7 @@ describe('storage output (chest chaining)', () => {
     const machines = worldOf(storage(0, 0, 'E'), seller(1, 0, 'E'))
     const stores = storesOf([[0, 0, { item: 'diamond', count: 2 }]])
     const s = step(mkState(machines, new Map(), 0, new Map(), { stores, money: 0 }))
-    expect(s.money).toBe(50) // diamond base price
+    expect(s.money).toBe(DIAMOND) // diamond base price
     expect(storeAt(s, 0, 0)).toEqual({ item: 'diamond', count: 1 })
   })
 
@@ -550,10 +554,10 @@ describe('storage output (chest chaining)', () => {
 
 describe('sellers (M5)', () => {
   it('credits money at the item base price for each item consumed while online', () => {
-    // belt(diamond) → seller; diamond base price is 50.
+    // belt(diamond) → seller, credited at the diamond's base price.
     const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
     const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { money: 100 }))
-    expect(s.money).toBe(150)
+    expect(s.money).toBe(100 + DIAMOND)
     expect(s.items.size).toBe(0) // consumed by the seller
     expect(s.sold?.get('diamond')).toBe(1) // recorded for `sell` bounties
   })
@@ -569,7 +573,7 @@ describe('sellers (M5)', () => {
 
   it('credits money at the live market price when one is supplied (M7)', () => {
     const machines = worldOf(belt(0, 0, 'E'), seller(1, 0, 'E'))
-    // diamond base price is 50; the live price of 25 must win.
+    // The live price of 25 must win over the diamond's (much higher) base price.
     const s = step(mkState(machines, itemsOf([[0, 0, 'diamond']]), 0, new Map(), { prices: { diamond: 25 } }))
     expect(s.money).toBe(25)
   })

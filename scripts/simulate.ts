@@ -36,8 +36,8 @@ spawnerOrder.sort((a, b) => (spawnerCost[b]?.cost ?? 0) - (spawnerCost[a]?.cost 
 const topSpawners = spawnerOrder.slice(0, 6)
 
 // --- Summary table -----------------------------------------------------------
-console.log('PROFILE               END-GAME   NET WORTH   INCOME/tick   SELL×   SELL/BUFF')
-console.log('─'.repeat(78))
+console.log('PROFILE               END-GAME   NET WORTH   INCOME/tick   SELL×   SELL/BUFF    ITEMS')
+console.log('─'.repeat(88))
 for (const r of results) {
   console.log(
     pad(r.profile.name, 20) +
@@ -50,7 +50,9 @@ for (const r of results) {
       '   ' +
       padL(r.finalModifiers.sellMultiplier.toFixed(2) + '×', 5) +
       '   ' +
-      padL(`${r.sellLinesBuilt}/${r.buffLinesBuilt}`, 9),
+      padL(`${r.sellLinesBuilt}/${r.buffLinesBuilt}`, 9) +
+      '   ' +
+      padL(`${r.distinctItemsBuilt}/${r.sellableItems}`, 7),
   )
 }
 
@@ -67,6 +69,40 @@ for (const r of results) {
     return padL(m ? m.atDay.toFixed(1) + 'd' : '—', 9)
   })
   console.log(pad(r.profile.name, 20) + cells.join(''))
+}
+
+// --- Item coverage: how much of the content each profile actually automates ---
+console.log('\nItem coverage — distinct items with a production line:\n')
+console.log(pad('PROFILE', 20) + padL('ITEMS', 8) + padL('ALL BY', 9) + '   FIRST 8 UNLOCKED, THEN THE LAST 3')
+console.log('─'.repeat(100))
+for (const r of results) {
+  const names = r.itemMilestones.map((m) => m.item)
+  const head8 = names.slice(0, 8).join(' ')
+  const tail = names.length > 11 ? ' … ' + names.slice(-3).join(' ') : ''
+  console.log(
+    pad(r.profile.name, 20) +
+      padL(`${r.distinctItemsBuilt}/${r.sellableItems}`, 8) +
+      padL(r.allItemsDay == null ? '—' : `${r.allItemsDay.toFixed(1)}d`, 9) +
+      '   ' +
+      (head8 + tail).slice(0, 62),
+  )
+}
+
+// The collector's curve is the interesting one: when does each item come online?
+const collector = results.find((r) => r.profile.duplicateLines === false)
+if (collector) {
+  console.log(`\nCollector unlock pace (${collector.profile.name}) — items automated per day:\n`)
+  const perDay = new Map<number, string[]>()
+  for (const m of collector.itemMilestones) {
+    const d = Math.floor(m.atDay)
+    if (!perDay.has(d)) perDay.set(d, [])
+    perDay.get(d)!.push(m.item)
+  }
+  for (const [d, items] of [...perDay.entries()].sort((a, b) => a[0] - b[0]).slice(0, 12)) {
+    console.log(padL(`day ${d}`, 8) + padL(String(items.length), 5) + '  ' + items.join(' ').slice(0, 78))
+  }
+  const missing = collector.sellableItems - collector.distinctItemsBuilt
+  if (missing > 0) console.log(`\n  ${missing} item(s) never automated in the window.`)
 }
 
 // --- Buff payoff (seller vs buffs, same cadence) -----------------------------
