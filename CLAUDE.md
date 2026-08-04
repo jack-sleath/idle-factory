@@ -392,9 +392,22 @@ carries the seam a desktop/Steam build snaps into.
 ## Adding a tutorial card
 
 Tutorial cards are the game's teaching layer: **one short modal per machine
-`MachineKind`**, shown the first time the player could actually build that kind
-and then never again. There is no scripted tutorial sequence and nothing is ever
-gated — the card just meets the player at the moment the shop button lights up.
+`MachineKind`**, run as a **strict sequence**. At most one card is ever pending,
+and a card comes due only when the player can actually *run* that machine — not
+merely when its shop price is met. Nothing is ever gated or blocked; the card just
+lands at the moment the machine becomes worth building. Today's ladder, for a
+player who builds what each card teaches:
+
+| # | card | comes due |
+| - | ---- | --------- |
+| 1 | spawner | game start (the starter kit is already running) |
+| 2 | conveyor | right after, same reason |
+| 3 | processor | ~$60 — its price |
+| 4 | storage | once a processor is built |
+| 5 | seller | ~$50 — its price |
+| 6 | combiner | ~$24k — a second spawner whose output pairs with processed ore |
+| 7 | village hut | ~$150k — a food, a drink and a bed all reachable |
+| 8 | town hall | ~$300, once a hut is standing |
 
 Content is data, in `src/data/tutorials.json`:
 
@@ -402,28 +415,46 @@ Content is data, in `src/data/tutorials.json`:
 {
   "id": "splitter",
   "kind": "splitter",
+  "gate": "machine",
   "title": "Splitters",
   "emoji": "🔱",
   "tips": ["A splitter feeds its three other sides in turn, one item each."]
 }
 ```
 
-- `kind` is both the subject and the trigger, so there is **exactly one card per
-  kind** and a kind no catalog entry provides is rejected (`validateData()`).
-- Order in the file is display order: a burst (the starter kit, or a windfall that
-  unlocks several kinds at once) is queued and read one card at a time.
+- `kind` is the subject, so there is **exactly one card per kind**, and a kind no
+  catalog entry provides is rejected (`validateData()`).
+- **File order is the sequence** — and it is the only contract: a card waits until
+  the *previous* card's machine kind is standing in the world. That "learn it,
+  build it, then get the next lesson" rule is what spreads the cards across a
+  session instead of dumping them the moment money allows. There is deliberately
+  no separate "after" field to drift out of sync, so inserting a card mid-file
+  re-links the chain around it.
+- `gate` names the reachability predicate in `GATES` (`src/game/tutorials.ts`).
+  A new gate is a new entry there; `assertTutorialGatesWired()` fails the build if
+  metadata and code drift. The shipped gates:
+  - `machine` — owns one, or can buy one right now. Right for plumbing.
+  - `combiner-recipe` — some combiner pairing is fully reachable: both inputs
+    producible and the whole chain (missing spawners + intermediate machines +
+    the combiner) affordable.
+  - `villager-inputs` — a food, a drink and a bed are all reachable, hut included.
 - A new emoji needs vendoring (see "Emoji icons" below); reusing the catalog
   entry's own emoji is the easy path.
 
-The trigger is `newlyTriggered()` in `src/game/tutorials.ts` — a pure function
-over `{world, money, buildCostMultiplier}` plus the seen-id set. A card fires when
-its kind is **affordable** (the cheapest catalog entry of that kind at its real,
-discount-and-`costGrowth`-adjusted price) **or already placed** — the latter is
-what explains the free starter kit on a brand-new save. The store calls it after
-each placement and each tick, queues cards in `tutorials`, and banks the id into
-the persisted `seenTutorials` when the player dismisses one (so a reload mid-card
-re-shows it). It early-outs once every card has been seen, which is the steady
-state within a few minutes of play.
+The chain gates price a *whole line* via `chainCost()`, which walks the recipe
+tree accumulating one entry per machine into a shared map (the dedupe trick
+`scaling.ts` uses), and treats a spawner the player already owns as free — that is
+why the combiner card lands on the price of the oak tree rather than of the
+combiner. It over-estimates slightly on purpose (every processor step is priced
+even if an idle one exists; belts are ignored; category slots pick their cheapest
+candidate independently), so a card can arrive a little late but never early.
+
+`nextTutorial()` is pure over `{world, money, buildCostMultiplier}` plus the
+seen-id set, and returns the one due card or null. The store calls it after each
+placement, after each dismissal (so a back-to-back pair has no blank frame), and
+each tick, holding it in `tutorial` and banking the id into the persisted
+`seenTutorials` on dismissal — so a reload mid-card re-shows it. It early-outs
+once every card has been seen, which is the steady state for most of a save.
 
 Notes:
 - `seenTutorials` is persisted, so **bump `config.saveVersion`** when you change
@@ -434,7 +465,8 @@ Notes:
   unlike achievements, which are permanent status.
 - The card renders in `src/components/TutorialPopup.tsx`; the first-run
   "how to play" card (`Onboarding.tsx`) shows ahead of it so the two never stack.
-- Cover a new card's trigger in `test/tutorials.test.ts`.
+- `test/tutorials.test.ts` walks the whole ladder and asserts each gate. Extend it
+  when you add a card — especially the ladder test, which is the pacing contract.
 
 ---
 

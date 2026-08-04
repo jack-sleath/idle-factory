@@ -31,7 +31,7 @@ function resetToEmptyWorld() {
     // Marking every tutorial card seen neutralizes them for the pre-existing tests
     // (a seen card never re-queues); the tutorial tests below set their own.
     seenTutorials: TUTORIALS.map((t) => t.id),
-    tutorials: [],
+    tutorial: null,
     savedAt: 0,
     selected: null,
     worldRev: 0,
@@ -575,67 +575,75 @@ describe('achievements (store integration)', () => {
 describe('tutorial cards (store integration)', () => {
   beforeEach(() => {
     resetToEmptyWorld()
-    useGameStore.setState({ seenTutorials: [], tutorials: [] })
+    // A real save always has the starter kit, and the sequence starts from it.
+    const kit = seedStarterKit()
+    useGameStore.setState({
+      world: new Map(kit.map((m) => [cellKey(m.x, m.y), m])),
+      seenTutorials: [],
+      tutorial: null,
+    })
   })
 
-  it('queues a card when a placement puts its kind on the board', () => {
-    useGameStore.setState({ money: effectiveCost(CATALOG_BY_ID['seller-basic'], 0) })
-    useGameStore.getState().place(0, 0, 'seller-basic')
-    // The free-rebuild basics cost nothing in an empty world, so those cards are
-    // pending too; the seller's own card lands behind them, in data order.
-    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual([
-      'spawner',
-      'belt',
-      'storage',
-      'seller',
-    ])
+  it('opens the sequence on a tick, one card at a time', () => {
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial?.id).toBe('spawner')
   })
 
-  it('queues cards on a tick as income makes new kinds affordable', () => {
+  it('hands over the next card the moment one is dismissed', () => {
+    useGameStore.getState().advanceTick()
+    useGameStore.getState().dismissTutorial()
+    // The conveyor card is already due (the kit has one), so no blank frame.
+    expect(useGameStore.getState().tutorial?.id).toBe('belt')
+    useGameStore.getState().dismissTutorial()
+    // The processor card waits on money, so the run stops here.
+    expect(useGameStore.getState().tutorial).toBeNull()
+  })
+
+  it('releases the next card once the player earns enough', () => {
+    useGameStore.setState({ seenTutorials: ['spawner', 'belt'] })
+    useGameStore.getState().advanceTick()
+    expect(useGameStore.getState().tutorial).toBeNull() // broke
     useGameStore.setState({ money: effectiveCost(CATALOG_BY_ID['processor-basic'], 0) })
     useGameStore.getState().advanceTick()
-    const queued = useGameStore.getState().tutorials.map((t) => t.id)
-    expect(queued).toContain('processor')
-    expect(queued).not.toContain('townhall') // still far too expensive
-    // Ticking again must not enqueue the same cards a second time.
+    expect(useGameStore.getState().tutorial?.id).toBe('processor')
+  })
+
+  it('releases the next card once the player builds what it taught', () => {
+    useGameStore.setState({ seenTutorials: ['spawner', 'belt', 'processor'], money: 1000 })
     useGameStore.getState().advanceTick()
-    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual(queued)
+    expect(useGameStore.getState().tutorial).toBeNull() // no processor built yet
+    useGameStore.getState().place(0, 5, 'processor-basic')
+    expect(useGameStore.getState().tutorial?.id).toBe('storage')
   })
 
   it('dismissing banks the card as seen, persists it, and never shows it again', () => {
-    // Start with the free basics already taught, so the seller is the only card due.
-    const basics = ['spawner', 'belt', 'storage']
-    useGameStore.setState({
-      seenTutorials: basics,
-      money: effectiveCost(CATALOG_BY_ID['seller-basic'], 0),
-    })
     useGameStore.getState().advanceTick()
-    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual(['seller'])
+    expect(useGameStore.getState().tutorial?.id).toBe('spawner')
 
     useGameStore.getState().dismissTutorial()
-    const after = useGameStore.getState()
-    expect(after.tutorials).toHaveLength(0)
-    expect(after.seenTutorials).toEqual([...basics, 'seller'])
+    expect(useGameStore.getState().seenTutorials).toEqual(['spawner'])
+    useGameStore.getState().saveNow()
+    expect(loadSave()!.seenTutorials).toEqual(['spawner'])
 
-    after.saveNow()
-    expect(loadSave()!.seenTutorials).toEqual([...basics, 'seller'])
-    // Same money, same world, another tick: the card stays dismissed.
+    // Clear the follow-up card and confirm neither comes back.
+    useGameStore.getState().dismissTutorial()
     useGameStore.getState().advanceTick()
-    expect(useGameStore.getState().tutorials).toHaveLength(0)
+    expect(useGameStore.getState().tutorial).toBeNull()
+    expect(useGameStore.getState().seenTutorials).toEqual(['spawner', 'belt'])
   })
 
-  it('dismissTutorial on an empty queue is a no-op', () => {
+  it('dismissTutorial with no card showing is a no-op', () => {
+    useGameStore.setState({ seenTutorials: TUTORIALS.map((t) => t.id) })
     useGameStore.getState().dismissTutorial()
-    expect(useGameStore.getState().seenTutorials).toEqual([])
+    expect(useGameStore.getState().seenTutorials).toHaveLength(TUTORIALS.length)
   })
 
   it('resetGame replays the tutorial, keeping achievements', () => {
     useGameStore.setState({ seenTutorials: TUTORIALS.map((t) => t.id) })
     useGameStore.getState().resetGame()
     expect(useGameStore.getState().seenTutorials).toEqual([])
-    expect(useGameStore.getState().tutorials).toHaveLength(0)
-    // The starter kit's own kinds queue up again on the next tick.
+    expect(useGameStore.getState().tutorial).toBeNull()
     useGameStore.getState().advanceTick()
-    expect(useGameStore.getState().tutorials.map((t) => t.id)).toEqual(['spawner', 'belt', 'storage'])
+    expect(useGameStore.getState().tutorial?.id).toBe('spawner')
   })
 })

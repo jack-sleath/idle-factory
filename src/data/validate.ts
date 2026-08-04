@@ -1,6 +1,7 @@
 import { ACHIEVEMENT_META, BOUNTY_TEMPLATES, CATALOG, ITEMS, ITEMS_BY_ID, RECIPES, TUTORIALS } from './index'
 import { ITEM_CATEGORIES } from '../game/types'
 import { assertAchievementsWired } from '../game/achievements'
+import { assertTutorialGatesWired } from '../game/tutorials'
 import { config } from './config'
 
 // Referential-integrity check over the content JSON (items / catalog / recipes).
@@ -146,10 +147,11 @@ export function validateData(): string[] {
   }
   errors.push(...assertAchievementsWired())
 
-  // Tutorials: one card per machine kind, fired the first time that kind is
-  // affordable (see `game/tutorials.ts`). A card for a kind nothing in the
-  // catalog provides could never trigger, and two cards for one kind would both
-  // fire at once — reject both.
+  // Tutorials: one card per machine kind, run as a strict sequence gated on
+  // being able to actually use that machine (see `game/tutorials.ts`). Metadata
+  // is content (checked here); each card's gate is code, wired by name. A card
+  // for a kind nothing in the catalog provides could never trigger, and two
+  // cards for one kind would fight over the same step of the sequence.
   const kindsSeen = new Set<string>()
   const catalogKinds = new Set(CATALOG.map((c) => c.kind))
   for (const t of TUTORIALS) {
@@ -164,6 +166,7 @@ export function validateData(): string[] {
     if (kindsSeen.has(t.kind)) errors.push(`tutorial "${t.id}" duplicates kind "${t.kind}"`)
     kindsSeen.add(t.kind)
   }
+  errors.push(...assertTutorialGatesWired())
 
   // Cross-check the lookup index was built over the same item set (guards against
   // an ITEMS_BY_ID that drifts from ITEMS).

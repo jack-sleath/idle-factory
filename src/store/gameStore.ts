@@ -27,7 +27,7 @@ import { catchUpMarket, fillHistory, livePrice, priceSnapshot, seedMarket, type 
 import { computeOffline, type AwaySummary } from '../game/offline'
 import { computeTownModifiers, sumVillagers, type TownModifiers } from '../game/town'
 import { newlyUnlocked, type AchievementContext, type AchievementDef } from '../game/achievements'
-import { newlyTriggered, type TutorialDef } from '../game/tutorials'
+import { nextTutorial, type TutorialDef } from '../game/tutorials'
 import { notifyUnlock } from '../game/achievementProviders'
 import {
   creditBounties,
@@ -87,8 +87,8 @@ export interface GameState {
   achievementToasts: AchievementDef[]
   /** Ids of tutorial cards already dismissed (persisted; each card shows once). */
   seenTutorials: string[]
-  /** Queue of triggered tutorial cards awaiting display (FIFO; drained by the UI). */
-  tutorials: TutorialDef[]
+  /** The tutorial card currently due, or null. At most one is ever pending. */
+  tutorial: TutorialDef | null
   /** Stock-market state: prices, last-10 histories, and last update time. */
   market: Market
   /** Whether live selling is active (false only during offline sampling). */
@@ -141,7 +141,7 @@ export interface GameState {
   advanceTick: () => void
   /** Drop the oldest queued achievement toast once the UI has shown it. */
   dismissAchievementToast: () => void
-  /** Close the front tutorial card, banking it as seen so it never shows again. */
+  /** Close the pending tutorial card, banking it as seen so it never shows again. */
   dismissTutorial: () => void
   /** Persist immediately (e.g. on visibilitychange → hidden). */
   saveNow: () => void
@@ -302,7 +302,7 @@ export const useGameStore = create<GameState>((set, get) => {
       sellerSales: new Map(), // in-memory only; re-accumulates from the tick stream
       achievementToasts: [], // a load never re-toasts already-earned achievements
       seenTutorials: save.seenTutorials ?? [],
-      tutorials: [], // the loaded state re-triggers whatever it still owes on the next tick
+      tutorial: null, // the loaded state re-triggers whatever it still owes on the next tick
       savedAt: save.savedAt,
       selected: null,
       worldRev: get().worldRev + 1,
@@ -361,23 +361,22 @@ export const useGameStore = create<GameState>((set, get) => {
     scheduleAutosave()
   }
 
-  // Queue any tutorial card the player has just become able to act on (see
-  // `game/tutorials.ts`): a card fires the first time its machine kind is
-  // affordable — or is already standing, which is what explains the free starter
-  // kit on a fresh game. Cards are only banked as seen when the player dismisses
-  // them (`dismissTutorial`), so a reload mid-card shows it again; already-queued
-  // ids are excluded here so a card can't be enqueued twice. Called after
-  // placement and every tick, and it early-outs once every card has been seen.
+  // Surface the next tutorial card when it comes due (see `game/tutorials.ts`).
+  // The cards are a strict sequence — at most one pending, each waiting until the
+  // player can actually run that machine — so this only ever swaps in the single
+  // card `nextTutorial` reports. A card is banked as seen when the player
+  // dismisses it (`dismissTutorial`), so a reload mid-card shows it again. Called
+  // after placement, after a dismissal, and every tick; it early-outs once every
+  // card has been seen, which is most of a save's life.
   const checkTutorials = () => {
     const cur = get()
+    if (cur.tutorial !== null) return // already showing one; it gates the rest
     if (cur.seenTutorials.length >= TUTORIALS.length) return
-    const shown = new Set([...cur.seenTutorials, ...cur.tutorials.map((t) => t.id)])
-    const fresh = newlyTriggered(
+    const due = nextTutorial(
       { world: cur.world, money: cur.money, buildCostMultiplier: cur.townModifiers.buildCostMultiplier },
-      shown,
+      new Set(cur.seenTutorials),
     )
-    if (fresh.length === 0) return
-    set({ tutorials: [...cur.tutorials, ...fresh] })
+    if (due) set({ tutorial: due })
   }
 
   const {
@@ -416,7 +415,7 @@ export const useGameStore = create<GameState>((set, get) => {
     sellerSales: new Map(),
     achievementToasts: [],
     seenTutorials,
-    tutorials: [],
+    tutorial: null,
     market,
     online: true,
     lastAway: null,
@@ -475,8 +474,8 @@ export const useGameStore = create<GameState>((set, get) => {
       commitBounties(creditBounties(get().bounties, 'place', 1, catalogId))
       // A placement can complete a layout achievement (e.g. a linked teleporter pair).
       checkAchievements()
-      // A first-of-its-kind build (or a free one) should be explained the moment
-      // it lands rather than on the next tick, so re-check the tutorials here too.
+      // Building the machine a card just taught is what releases the next lesson,
+      // so re-check here rather than making the player wait for the next tick.
       checkTutorials()
     },
 
@@ -661,7 +660,7 @@ export const useGameStore = create<GameState>((set, get) => {
       // Achievements can be met by this tick's sales, a filled storage, or a
       // freshly banked full villager set — re-check against the new state.
       checkAchievements()
-      // Income is what unlocks tutorial cards, and income arrives tick by tick.
+      // Money is what most cards wait on, and it arrives tick by tick.
       checkTutorials()
     },
 
@@ -671,10 +670,13 @@ export const useGameStore = create<GameState>((set, get) => {
     },
 
     dismissTutorial: () => {
-      const [shown, ...rest] = get().tutorials
+      const shown = get().tutorial
       if (!shown) return
-      set({ tutorials: rest, seenTutorials: [...get().seenTutorials, shown.id] })
+      set({ tutorial: null, seenTutorials: [...get().seenTutorials, shown.id] })
       scheduleAutosave()
+      // The next card may already be due (the opening spawner → conveyor pair is
+      // the usual case) — hand it over now rather than blinking for a tick.
+      checkTutorials()
     },
 
     saveNow: () => {
@@ -731,7 +733,7 @@ export const useGameStore = create<GameState>((set, get) => {
         // A wipe is a fresh start, so the teaching starts over too (unlike
         // achievements, tutorial cards are guidance rather than earned status).
         seenTutorials: [],
-        tutorials: [],
+        tutorial: null,
         transit: new Map(),
         online: true,
         lastAway: null,
