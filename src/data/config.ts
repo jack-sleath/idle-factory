@@ -7,7 +7,7 @@ import type { Camera } from '../render/camera'
 // offline catch-up) but are defined here now so all tuning lives in one place.
 export const config = {
   /** Save schema version (bumped when the persisted shape or item set changes). */
-  saveVersion: 17,
+  saveVersion: 18,
 
   /** Simulation tick length in milliseconds (M3). */
   tickMs: 500,
@@ -100,10 +100,13 @@ export const config = {
    *  - 1    → linear (every villager equally strong; the old behaviour)
    *  - 0.5  → square root: 1 villager unchanged, 2 give ×1.41, 4 to double 1
    *  - <0.5 → harsher falloff (approaches logarithmic feel)
+   * Set to 0.4 so the town's sell multiplier saturates in the single digits
+   * rather than running to ×45+ over a month of banking, which made villagers a
+   * mandatory bypass of the whole spawner ladder (`npm run simulate` shows both).
    * Chosen so a single villager still matches its `townLevers` value exactly
    * (`1 ^ e = 1`), so those per-unit numbers keep their meaning at the margin.
    */
-  townScaling: { diminishingExponent: 0.5 },
+  townScaling: { diminishingExponent: 0.4 },
 
   /** Offline catch-up cap, applied to both market and production (M9). */
   maxOfflineHours: 24,

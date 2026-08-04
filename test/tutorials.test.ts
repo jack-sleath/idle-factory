@@ -100,12 +100,14 @@ describe('tutorial sequence', () => {
       'village',
       'townhall',
     ])
-    // The two chain-gated cards are the ones that cost real progress, not pocket change.
+    // The two chain-gated cards cost real progress, priced off what they need:
+    // the combiner off a second spawner, the hut off the whole villager chain.
     const at = (id: string) => ladder.find((l) => l.id === id)!.money
     expect(at('spawner')).toBe(0)
     expect(at('processor')).toBe(CATALOG_BY_ID['processor-basic'].cost)
-    expect(at('combiner')).toBeGreaterThan(20_000)
-    expect(at('village')).toBeGreaterThan(100_000)
+    expect(at('combiner')).toBeGreaterThan(CATALOG_BY_ID['oak-tree'].cost)
+    expect(at('village')).toBeGreaterThan(CATALOG_BY_ID['village-hut'].cost)
+    expect(at('village')).toBeGreaterThan(at('combiner'))
     // Every card seen → nothing left to show.
     expect(due(machines, seen, 1_000_000)).toBeNull()
   })
@@ -128,18 +130,24 @@ describe('tutorial gates', () => {
   it('drops the combiner gate to pocket change once that second spawner is owned', () => {
     const withoutOak = threshold(readyForCombiner(), EARLY)
     const withOak = threshold([...readyForCombiner(), machine('oak-tree')], EARLY)
-    expect(withOak).toBeLessThan(1_000)
-    expect(withOak).toBeLessThan(withoutOak - 20_000) // the spawner was the whole cost
+    // Owning the spawner leaves only the plumbing to pay for, and the saving is
+    // essentially the spawner's whole price — that is what the gate is tracking.
+    expect(withOak).toBeLessThan(withoutOak)
+    expect(withoutOak - withOak).toBeGreaterThanOrEqual(CATALOG_BY_ID['oak-tree'].cost * 0.9)
   })
 
   it('holds the village card until a food, a drink and a bed are all reachable', () => {
     const machines = [...readyForCombiner(), machine('combiner-basic')]
     const seen = [...EARLY, 'combiner']
-    expect(dueId(machines, seen, CATALOG_BY_ID['village-hut'].cost * 100)).toBeNull()
+    // Affording the hut itself is not enough — it needs three lines to feed it.
+    expect(dueId(machines, seen, CATALOG_BY_ID['village-hut'].cost)).toBeNull()
     const gate = threshold(machines, seen)
-    // Wool and planks for the bed, plus a food and a drink: several farm spawners.
-    expect(gate).toBeGreaterThan(CATALOG_BY_ID['sheep'].cost + CATALOG_BY_ID['oak-tree'].cost)
+    // Wool and planks for the bed, plus a food and a drink, plus the hut.
+    expect(gate).toBeGreaterThan(
+      CATALOG_BY_ID['village-hut'].cost + CATALOG_BY_ID['sheep'].cost + CATALOG_BY_ID['oak-tree'].cost,
+    )
     expect(dueId(machines, seen, gate)).toBe('village')
+    expect(dueId(machines, seen, gate - 1)).toBeNull()
   })
 
   it('holds the town hall card until a hut is standing, then asks only its price', () => {

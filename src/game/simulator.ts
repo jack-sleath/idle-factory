@@ -30,6 +30,14 @@ import type { TownHallState } from './tick'
 // market-timing buffs (guard/farmer/miner, which only widen the price band)
 // show ~no effect here and the compounding buffs (merchant/mason/innkeeper) do.
 
+/**
+ * Share of the balance a player will spend on *more of what they already run*
+ * while saving for a line they cannot yet afford. The remainder accumulates
+ * toward that goal. 1 = pure spender (never saves, so never reaches a
+ * step-change in price); 0 = never reinvests.
+ */
+const REINVEST_SHARE = 0.5
+
 const MS_PER_MINUTE = 60_000
 const MS_PER_DAY = 24 * 60 * MS_PER_MINUTE
 
@@ -79,9 +87,26 @@ export interface PlayerProfile {
    * villagers). See the note at the top about why guard/farmer/miner are omitted.
    */
   buffPriority?: string[]
+  /**
+   * Whether the player stacks extra copies of lines they already run. True (the
+   * default) is the reinvesting optimiser: once every affordable *new* item line
+   * is built, duplicate the best income-per-coin one. False is the collector —
+   * one line per item, breadth only, money piling up between unlocks — which is
+   * what `itemMilestones` / `allItemsDay` are there to measure.
+   */
+  duplicateLines?: boolean
 }
 
 const DEFAULT_BUFF_PRIORITY = ['merchant', 'innkeeper', 'mason', 'villager']
+
+/**
+ * Every villager type, for a player who wants the whole town rather than only
+ * the buffs that move an auto-seller economy. `guard`/`farmer`/`miner` widen the
+ * market's price band, which a mean-price model can't see — so they show up here
+ * as population and build cost, with no measured payoff. That gap is a modelling
+ * limit, not a verdict on those villagers.
+ */
+const ALL_VILLAGER_TYPES = ['merchant', 'innkeeper', 'mason', 'villager', 'guard', 'farmer', 'miner']
 
 // --- Production model ---------------------------------------------------------
 
@@ -301,6 +326,15 @@ export interface SpawnerMilestone {
   atDay: number
 }
 
+/** When a given item first got a production line (breadth, not depth). */
+export interface ItemMilestone {
+  item: string
+  /** Money paid for that first line, at the scaled price it cost then. */
+  lineCost: number
+  atMs: number
+  atDay: number
+}
+
 export interface Sample {
   atMs: number
   atDay: number
@@ -320,6 +354,14 @@ export interface SimResult {
   endGameDay: number | null
   /** Real days until the first villager-buff line was built (the town-hall path opens), or null. */
   firstBuffDay: number | null
+  /** When each item first got a line, in build order — the content-coverage curve. */
+  itemMilestones: ItemMilestone[]
+  /** Distinct items with at least one line (≤ `sellableItems`). */
+  distinctItemsBuilt: number
+  /** How many items the economy can produce and sell at all (the coverage target). */
+  sellableItems: number
+  /** Real days until EVERY sellable item had a line, or null if never. */
+  allItemsDay: number | null
   /** Per-session samples of the money/income/buff trajectory. */
   samples: Sample[]
   finalMoney: number
@@ -370,6 +412,8 @@ export function simulate(
   // A session's hands-on placement budget, in machines.
   const machineBudget = Math.max(1, Math.round(profile.sessionMinutes * profile.machinesPerMinute))
   const buffPriority = profile.buffPriority ?? DEFAULT_BUFF_PRIORITY
+  // A collector never stacks copies: one line per item, breadth only.
+  const duplicates = profile.duplicateLines ?? true
 
   const sellLineByItem = new Map(model.sellLines.map((l) => [l.item, l]))
 
@@ -415,6 +459,12 @@ export function simulate(
   // opens); null until then.
   let firstBuffMs: number | null = null
 
+  const itemMilestones = new Map<string, ItemMilestone>()
+  const recordItem = (line: LineDef, paid: number) => {
+    if (itemMilestones.has(line.item)) return
+    itemMilestones.set(line.item, { item: line.item, lineCost: paid, atMs: wallMs, atDay: wallMs / MS_PER_DAY })
+  }
+
   const spawnerMilestones = new Map<string, SpawnerMilestone>()
   const recordSpawners = (line: LineDef) => {
     for (const catalogId of line.spawners) {
@@ -430,6 +480,7 @@ export function simulate(
     }
   }
   recordSpawners(model.bootstrap)
+  recordItem(model.bootstrap, 0) // the starter kit is free
 
   // Base (pre-buff) income per tick = sum over every built line.
   const baseIncomePerTick = (): number => {
@@ -516,6 +567,27 @@ export function simulate(
     //     is affordable, duplicate the highest-ROI already-built line. ROI uses
     //     the *current* scaled cost, so as copies pile up the greedy naturally
     //     rotates to whatever is now the cheapest income per coin. -----------
+    //
+    // Saving for the next unlock: a purely greedy shopper spends its whole balance
+    // every session, so it can never accumulate a lump sum — which made a player
+    // who shops five times a day reach a big-ticket spawner LATER than one who
+    // shops daily and banks 24h of income first. Real players (and Cookie Clicker
+    // players) stare at the price and save. So while some line is still unbuilt and
+    // out of reach, only `REINVEST_SHARE` of the balance may go on duplicates; the
+    // rest is held for the goal. New lines are always bought when affordable.
+    const cheapestUnbuilt = (buildMult: number): number | null => {
+      let min: number | null = null
+      for (const line of model.sellLines) {
+        if (builtCounts.has(line.item)) continue
+        const c = lineCostNow(line, buildMult)
+        if (c > 0 && (min === null || c < min)) min = c
+      }
+      return min
+    }
+    const goal = cheapestUnbuilt(buildMult)
+    const dupCeiling = goal !== null && goal > money ? money * REINVEST_SHARE : money
+
+    let dupSpend = 0
     while (machinesLeft > 0) {
       let bestNew: { line: LineDef; cost: number; roi: number } | null = null
       let bestDup: { line: LineDef; cost: number; roi: number } | null = null
@@ -527,18 +599,26 @@ export function simulate(
         const bucket = builtCounts.has(line.item) ? 'dup' : 'new'
         if (bucket === 'new') {
           if (!bestNew || roi > bestNew.roi) bestNew = { line, cost: c, roi }
-        } else if (!bestDup || roi > bestDup.roi) {
+        } else if (duplicates && (!bestDup || roi > bestDup.roi)) {
           bestDup = { line, cost: c, roi }
         }
       }
       const pick = bestNew ?? bestDup
       if (!pick) break
+      // Duplicates come out of the reinvestment share only; the rest is savings.
+      if (!bestNew) {
+        if (dupSpend + pick.cost > dupCeiling) break
+        dupSpend += pick.cost
+      }
       money -= pick.cost
       investedTotal += pick.cost
       applyPlacement(pick.line)
       const isNew = !builtCounts.has(pick.line.item)
       builtCounts.set(pick.line.item, (builtCounts.get(pick.line.item) ?? 0) + 1)
-      if (isNew) recordSpawners(pick.line)
+      if (isNew) {
+        recordSpawners(pick.line)
+        recordItem(pick.line, pick.cost)
+      }
       machinesLeft -= pick.line.machineCount
     }
   }
@@ -577,6 +657,12 @@ export function simulate(
   for (const n of builtCounts.values()) sellLines += n
 
   const milestoneList = [...spawnerMilestones.values()].sort((a, b) => a.atMs - b.atMs)
+  const itemList = [...itemMilestones.values()].sort((a, b) => a.atMs - b.atMs)
+  // Coverage is over the sellable set (villagers terminate at a town hall, not a
+  // seller, so they are the buff track's business, not the collector's).
+  const sellableItems = model.sellLines.length
+  const allItemsDay =
+    itemList.length >= sellableItems ? (itemList[itemList.length - 1]?.atDay ?? null) : null
   // "End game" = the single most expensive spawner in the catalog.
   const priciestSpawner = CATALOG.filter((c) => c.kind === 'spawner').sort((a, b) => b.cost - a.cost)[0]
   const endGame = priciestSpawner ? spawnerMilestones.get(priciestSpawner.id) : undefined
@@ -586,6 +672,10 @@ export function simulate(
     spawnerMilestones: milestoneList,
     endGameDay: endGame ? endGame.atDay : null,
     firstBuffDay: firstBuffMs === null ? null : firstBuffMs / MS_PER_DAY,
+    itemMilestones: itemList,
+    distinctItemsBuilt: builtCounts.size,
+    sellableItems,
+    allItemsDay,
     samples,
     finalMoney: money,
     finalNetWorth: money + investedTotal,
@@ -614,4 +704,26 @@ export const PRESET_PROFILES: PlayerProfile[] = [
   { name: 'Hardcore · buffs', sessionMinutes: 30, sessionsPerDay: 6, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
   { name: 'Lapsed · seller', sessionMinutes: 20, sessionsPerDay: 0.5, machinesPerMinute: 12, buffInvestmentFraction: 0 },
   { name: 'Lapsed · buffs', sessionMinutes: 20, sessionsPerDay: 0.5, machinesPerMinute: 12, buffInvestmentFraction: 0.5 },
+  // Villager-maxer: pours nearly everything into the town-hall pipeline and banks
+  // EVERY specialist, not just the ones that pay an auto-seller. Not 1.0 — a pure
+  // villager player builds no sell lines, so income never leaves the starter ore
+  // and the whole pipeline stalls; 0.85 is "as hard as you can push and still fund it".
+  {
+    name: 'Villager-max',
+    sessionMinutes: 20,
+    sessionsPerDay: 4,
+    machinesPerMinute: 12,
+    buffInvestmentFraction: 0.85,
+    buffPriority: ALL_VILLAGER_TYPES,
+  },
+  // Collector: one line per item, never a second copy — the "can I make one of
+  // everything?" player. Their curve is content coverage, not net worth.
+  {
+    name: 'Completionist',
+    sessionMinutes: 20,
+    sessionsPerDay: 4,
+    machinesPerMinute: 12,
+    buffInvestmentFraction: 0,
+    duplicateLines: false,
+  },
 ]

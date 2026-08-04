@@ -57,7 +57,8 @@ describe('town modifiers', () => {
     // linear value (no visible jump).
     const kneeReduction = 1 - config.townLeverFloors.volatility
     const atKnee = computeTownModifiers(
-      halls({ guard: Math.round((kneeReduction / lv.guard) ** 2) }),
+      // Invert `count ^ exponent × rate` for the count that lands exactly on the knee.
+      halls({ guard: Math.round((kneeReduction / lv.guard) ** (1 / config.townScaling.diminishingExponent)) }),
     ).volatilityMultiplier
     expect(atKnee).toBeCloseTo(config.townLeverFloors.volatility, 2)
   })
