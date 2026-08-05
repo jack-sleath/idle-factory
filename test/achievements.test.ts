@@ -71,6 +71,12 @@ describe('pocket-monsters (all villager types in one hall)', () => {
     expect(unlockedIds(ctx({ townHalls }))).toContain('pocket-monsters')
   })
 
+  it('unlocks on any surplus — the bar is at least one of each, not exactly one', () => {
+    const counts: TownHallState = Object.fromEntries(VILLAGERS.map((v, i) => [v, i + 2]))
+    const townHalls = new Map<string, TownHallState>([['0,0', counts]])
+    expect(unlockedIds(ctx({ townHalls }))).toContain('pocket-monsters')
+  })
+
   it('does not unlock when the set is spread across two halls', () => {
     const townHalls = new Map<string, TownHallState>([
       ['0,0', { villager: 1, merchant: 1, guard: 1, innkeeper: 1 }],
