@@ -2,7 +2,7 @@
   {
     "id": "pocket-monsters",
     "name": "Pocket Monsters",
-    "description": "Bank one of every villager type in a single town hall. Gotta recruit 'em all.",
+    "description": "Bank at least one of every villager type — a plain villager plus all six specialists — in a single town hall. Gotta recruit 'em all.",
     "emoji": "🧢",
     "external": { "steam": "ACH_POCKET_MONSTERS" }
   },

@@ -1064,13 +1064,15 @@
   width: 100%;
 }
 
-/* Achievements cabinet — sits top-left like the bounty board and scrolls. */
+/* Achievements cabinet — sits top-left like the bounty board. Only the roster
+   scrolls (see .ach__list) so the header, count and search stay pinned. */
 .panel--achievements {
   left: 12px;
   right: auto;
   width: min(340px, calc(100% - 24px));
   max-height: calc(100% - 24px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .ach__count {
@@ -1088,6 +1090,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .ach {
